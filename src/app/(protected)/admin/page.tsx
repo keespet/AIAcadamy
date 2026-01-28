@@ -1,13 +1,38 @@
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 
+interface OrganizationMember {
+  id: number
+  user_id: string
+  status: 'active' | 'inactive' | 'pending'
+  role: 'admin' | 'participant'
+}
+
+interface UserProgress {
+  user_id: string
+  quiz_completed: boolean
+  quiz_score: number | null
+}
+
+interface Certificate {
+  user_id: string
+}
+
+interface RecentMember {
+  id: number
+  user_id: string
+  status: string
+  joined_at: string | null
+  profiles: { full_name: string | null }
+}
+
 export default async function AdminDashboardPage() {
   const supabase = await createClient()
 
   // Get all members
   const { data: members } = await supabase
     .from('organization_members')
-    .select('id, user_id, status, role')
+    .select('id, user_id, status, role') as { data: OrganizationMember[] | null }
 
   // Get module count
   const { count: totalModules } = await supabase
@@ -17,12 +42,12 @@ export default async function AdminDashboardPage() {
   // Get all progress
   const { data: allProgress } = await supabase
     .from('user_progress')
-    .select('user_id, quiz_completed, quiz_score')
+    .select('user_id, quiz_completed, quiz_score') as { data: UserProgress[] | null }
 
   // Get certificates
   const { data: certificates } = await supabase
     .from('certificates')
-    .select('user_id')
+    .select('user_id') as { data: Certificate[] | null }
 
   // Calculate statistics
   const participants = members?.filter(m => m.role === 'participant') || []
@@ -54,7 +79,7 @@ export default async function AdminDashboardPage() {
     `)
     .eq('role', 'participant')
     .order('joined_at', { ascending: false, nullsFirst: false })
-    .limit(5)
+    .limit(5) as { data: RecentMember[] | null }
 
   return (
     <div>
