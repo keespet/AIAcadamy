@@ -7,9 +7,10 @@ import { createClient } from '@/lib/supabase/client'
 
 interface NavigationProps {
   userName?: string | null
+  isAdmin?: boolean
 }
 
-export default function Navigation({ userName }: NavigationProps) {
+export default function Navigation({ userName, isAdmin }: NavigationProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const router = useRouter()
@@ -41,6 +42,11 @@ export default function Navigation({ userName }: NavigationProps) {
             <Link href="/profile" className="hover:opacity-80" style={{ color: 'var(--foreground)' }}>
               Profiel
             </Link>
+            {isAdmin && (
+              <Link href="/admin" className="hover:opacity-80 font-medium" style={{ color: 'var(--primary)' }}>
+                Admin
+              </Link>
+            )}
             <div className="flex items-center gap-3 pl-4 border-l" style={{ borderColor: 'var(--border)' }}>
               <span className="text-sm" style={{ color: 'var(--secondary)' }}>
                 {userName || 'Gebruiker'}
@@ -99,6 +105,16 @@ export default function Navigation({ userName }: NavigationProps) {
               >
                 Profiel
               </Link>
+              {isAdmin && (
+                <Link
+                  href="/admin"
+                  onClick={() => setMenuOpen(false)}
+                  className="py-2 font-medium"
+                  style={{ color: 'var(--primary)' }}
+                >
+                  Admin
+                </Link>
+              )}
               <div className="pt-3 border-t" style={{ borderColor: 'var(--border)' }}>
                 <span className="text-sm block mb-2" style={{ color: 'var(--secondary)' }}>
                   Ingelogd als {userName || 'Gebruiker'}

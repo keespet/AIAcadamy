@@ -139,6 +139,35 @@ export interface Database {
           issued_at?: string
         }
       }
+      organization_members: {
+        Row: {
+          id: number
+          user_id: string
+          role: 'admin' | 'participant'
+          status: 'active' | 'inactive' | 'pending'
+          invited_by: string | null
+          invited_at: string
+          joined_at: string | null
+        }
+        Insert: {
+          id?: number
+          user_id: string
+          role?: 'admin' | 'participant'
+          status?: 'active' | 'inactive' | 'pending'
+          invited_by?: string | null
+          invited_at?: string
+          joined_at?: string | null
+        }
+        Update: {
+          id?: number
+          user_id?: string
+          role?: 'admin' | 'participant'
+          status?: 'active' | 'inactive' | 'pending'
+          invited_by?: string | null
+          invited_at?: string
+          joined_at?: string | null
+        }
+      }
     }
   }
 }
@@ -148,3 +177,4 @@ export type Module = Database['public']['Tables']['modules']['Row']
 export type Question = Database['public']['Tables']['questions']['Row']
 export type UserProgress = Database['public']['Tables']['user_progress']['Row']
 export type Certificate = Database['public']['Tables']['certificates']['Row']
+export type OrganizationMember = Database['public']['Tables']['organization_members']['Row']
