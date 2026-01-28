@@ -1,5 +1,10 @@
 import { createClient } from '@/lib/supabase/server'
 
+interface OrganizationMember {
+  role: 'admin' | 'participant'
+  status: 'active' | 'inactive' | 'pending'
+}
+
 export async function isCurrentUserAdmin(): Promise<boolean> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -10,7 +15,7 @@ export async function isCurrentUserAdmin(): Promise<boolean> {
     .from('organization_members')
     .select('role, status')
     .eq('user_id', user.id)
-    .single()
+    .single() as { data: OrganizationMember | null }
 
   return data?.role === 'admin' && data?.status === 'active'
 }
@@ -25,7 +30,7 @@ export async function getCurrentUserRole(): Promise<'admin' | 'participant' | nu
     .from('organization_members')
     .select('role, status')
     .eq('user_id', user.id)
-    .single()
+    .single() as { data: OrganizationMember | null }
 
   if (!data || data.status !== 'active') return null
   return data.role
@@ -41,7 +46,7 @@ export async function requireAdmin(): Promise<{ userId: string } | null> {
     .from('organization_members')
     .select('role, status')
     .eq('user_id', user.id)
-    .single()
+    .single() as { data: OrganizationMember | null }
 
   if (data?.role !== 'admin' || data?.status !== 'active') return null
 

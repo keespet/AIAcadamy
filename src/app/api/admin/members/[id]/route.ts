@@ -2,6 +2,35 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { requireAdmin } from '@/lib/admin'
 
+interface OrganizationMemberWithProfile {
+  id: number
+  user_id: string
+  role: string
+  status: string
+  invited_at: string
+  joined_at: string | null
+  profiles: { full_name: string | null }
+}
+
+interface UserProgressWithModule {
+  module_id: number
+  view_time_seconds: number
+  quiz_score: number | null
+  quiz_completed: boolean
+  completed_at: string | null
+  modules: { title: string; order_number: number }
+}
+
+interface Certificate {
+  verification_code: string
+  average_score: number | null
+  issued_at: string
+}
+
+interface MemberWithUserId {
+  user_id: string
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -26,7 +55,7 @@ export async function GET(
       profiles!inner(full_name)
     `)
     .eq('id', id)
-    .single()
+    .single() as { data: OrganizationMemberWithProfile | null, error: Error | null }
 
   if (error || !member) {
     return NextResponse.json({ error: 'Lid niet gevonden' }, { status: 404 })
@@ -44,20 +73,20 @@ export async function GET(
       modules!inner(title, order_number)
     `)
     .eq('user_id', member.user_id)
-    .order('module_id')
+    .order('module_id') as { data: UserProgressWithModule[] | null }
 
   // Get certificate
   const { data: certificate } = await supabase
     .from('certificates')
-    .select('*')
+    .select('verification_code, average_score, issued_at')
     .eq('user_id', member.user_id)
-    .single()
+    .single() as { data: Certificate | null }
 
   return NextResponse.json({
     member: {
       id: member.id,
       userId: member.user_id,
-      fullName: (member.profiles as { full_name: string | null })?.full_name || 'Onbekend',
+      fullName: member.profiles?.full_name || 'Onbekend',
       role: member.role,
       status: member.status,
       invitedAt: member.invited_at,
@@ -65,8 +94,8 @@ export async function GET(
     },
     progress: progress?.map(p => ({
       moduleId: p.module_id,
-      moduleTitle: (p.modules as { title: string; order_number: number })?.title,
-      moduleOrder: (p.modules as { title: string; order_number: number })?.order_number,
+      moduleTitle: p.modules?.title,
+      moduleOrder: p.modules?.order_number,
       viewTimeSeconds: p.view_time_seconds,
       quizScore: p.quiz_score,
       quizCompleted: p.quiz_completed,
@@ -97,7 +126,7 @@ export async function DELETE(
     .from('organization_members')
     .select('user_id')
     .eq('id', id)
-    .single()
+    .single() as { data: MemberWithUserId | null }
 
   if (member?.user_id === admin.userId) {
     return NextResponse.json({ error: 'Je kunt jezelf niet verwijderen' }, { status: 400 })
@@ -106,7 +135,7 @@ export async function DELETE(
   const { error } = await supabase
     .from('organization_members')
     .delete()
-    .eq('id', id)
+    .eq('id', id) as { error: Error | null }
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })

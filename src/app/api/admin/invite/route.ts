@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireAdmin } from '@/lib/admin'
 
+interface ExistingMember {
+  id: number
+  status: string
+}
+
 export async function POST(request: NextRequest) {
   const admin = await requireAdmin()
   if (!admin) {
@@ -34,14 +39,14 @@ export async function POST(request: NextRequest) {
         .from('organization_members')
         .select('id, status')
         .eq('user_id', existingUser.id)
-        .single()
+        .single() as { data: ExistingMember | null }
 
       if (existingMember) {
         if (existingMember.status === 'inactive') {
           // Reactivate the member
           await supabaseAdmin
             .from('organization_members')
-            .update({ status: 'active' })
+            .update({ status: 'active' } as never)
             .eq('id', existingMember.id)
 
           return NextResponse.json({
@@ -63,7 +68,7 @@ export async function POST(request: NextRequest) {
           status: 'active',
           invited_by: admin.userId,
           joined_at: new Date().toISOString()
-        })
+        } as never)
 
       if (memberError) {
         return NextResponse.json({ error: memberError.message }, { status: 500 })
@@ -100,7 +105,7 @@ export async function POST(request: NextRequest) {
         role: 'participant',
         status: 'pending',
         invited_by: admin.userId
-      })
+      } as never)
 
     if (memberError) {
       return NextResponse.json({ error: memberError.message }, { status: 500 })

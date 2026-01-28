@@ -2,6 +2,27 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { requireAdmin } from '@/lib/admin'
 
+interface OrganizationMemberWithProfile {
+  id: number
+  user_id: string
+  role: string
+  status: string
+  invited_at: string
+  joined_at: string | null
+  profiles: { full_name: string | null }
+}
+
+interface UserProgress {
+  user_id: string
+  quiz_completed: boolean
+  quiz_score: number | null
+  completed_at: string | null
+}
+
+interface Certificate {
+  user_id: string
+}
+
 export async function GET() {
   const admin = await requireAdmin()
   if (!admin) {
@@ -22,7 +43,7 @@ export async function GET() {
       joined_at,
       profiles!inner(full_name)
     `)
-    .order('invited_at', { ascending: false })
+    .order('invited_at', { ascending: false }) as { data: OrganizationMemberWithProfile[] | null, error: Error | null }
 
   if (membersError) {
     return NextResponse.json({ error: membersError.message }, { status: 500 })
@@ -36,15 +57,12 @@ export async function GET() {
   // Get progress for all users
   const { data: allProgress } = await supabase
     .from('user_progress')
-    .select('user_id, quiz_completed, quiz_score, completed_at')
+    .select('user_id, quiz_completed, quiz_score, completed_at') as { data: UserProgress[] | null }
 
   // Get certificates
   const { data: certificates } = await supabase
     .from('certificates')
-    .select('user_id')
-
-  // Get emails from auth.users via a workaround - we'll need to use the admin API
-  // For now, we'll return what we have and fetch emails separately if needed
+    .select('user_id') as { data: Certificate[] | null }
 
   const participantsWithProgress = members?.map(member => {
     const userProgress = allProgress?.filter(p => p.user_id === member.user_id) || []
@@ -59,7 +77,7 @@ export async function GET() {
     return {
       id: member.id,
       userId: member.user_id,
-      fullName: (member.profiles as { full_name: string | null })?.full_name || 'Onbekend',
+      fullName: member.profiles?.full_name || 'Onbekend',
       role: member.role,
       status: member.status,
       invitedAt: member.invited_at,
@@ -96,7 +114,7 @@ export async function PATCH(request: NextRequest) {
 
   const { error } = await supabase
     .from('organization_members')
-    .update({ status })
+    .update({ status } as never)
     .eq('id', memberId)
 
   if (error) {
