@@ -25,7 +25,7 @@ export default async function ProtectedLayout({
   return (
     <div className="min-h-screen" style={{ background: 'var(--background)' }}>
       <Navigation userName={userName} />
-      <main className="max-w-6xl mx-auto px-4 py-8">
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-12">
         {children}
       </main>
       <OfflineIndicator />

@@ -24,7 +24,7 @@ export default function Navigation({ userName }: NavigationProps) {
 
   return (
     <nav className="border-b" style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)' }}>
-      <div className="max-w-6xl mx-auto px-4">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           <Link href="/dashboard" className="text-xl font-bold" style={{ color: 'var(--primary)' }}>
             AI Academy
