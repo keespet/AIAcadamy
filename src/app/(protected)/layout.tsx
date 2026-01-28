@@ -2,6 +2,11 @@ import { createClient } from '@/lib/supabase/server'
 import Navigation from '@/components/Navigation'
 import OfflineIndicator from '@/components/OfflineIndicator'
 
+interface OrganizationMember {
+  role: 'admin' | 'participant'
+  status: 'active' | 'inactive' | 'pending'
+}
+
 export default async function ProtectedLayout({
   children,
 }: {
@@ -28,7 +33,7 @@ export default async function ProtectedLayout({
       .from('organization_members')
       .select('role, status')
       .eq('user_id', user.id)
-      .single()
+      .single() as { data: OrganizationMember | null }
 
     isAdmin = memberData?.role === 'admin' && memberData?.status === 'active'
   }
