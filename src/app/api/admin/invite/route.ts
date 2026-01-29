@@ -104,8 +104,38 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Create new user with invite
-    const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+    // Check if there's already a pending invite for this email
+    const { data: existingInvite } = await supabaseAdmin
+      .from('organization_members')
+      .select('id, status')
+      .eq('email', email.toLowerCase())
+      .is('user_id', null)
+      .single()
+
+    if (existingInvite) {
+      return NextResponse.json({
+        error: 'Er is al een uitnodiging verstuurd naar dit emailadres'
+      }, { status: 400 })
+    }
+
+    // First create the organization_members record with email (no user_id yet)
+    const { error: memberError } = await supabaseAdmin
+      .from('organization_members')
+      .insert({
+        email: email.toLowerCase(),
+        user_id: null,  // Will be set when user accepts invite
+        role: 'participant',
+        status: 'invited',
+        invited_by: admin.userId
+      } as never)
+
+    if (memberError) {
+      console.error('Member insert error:', memberError)
+      return NextResponse.json({ error: memberError.message }, { status: 500 })
+    }
+
+    // Now send the invite email via Supabase Auth
+    const { error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
       data: {
         full_name: fullName || null,
         invited_by: admin.userId
@@ -113,26 +143,15 @@ export async function POST(request: NextRequest) {
       redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/auth/callback`
     })
 
-    if (createError) {
-      return NextResponse.json({ error: createError.message }, { status: 500 })
-    }
+    if (inviteError) {
+      // Rollback: delete the organization_members record if invite fails
+      await supabaseAdmin
+        .from('organization_members')
+        .delete()
+        .eq('email', email.toLowerCase())
+        .is('user_id', null)
 
-    if (!newUser.user) {
-      return NextResponse.json({ error: 'Kon gebruiker niet aanmaken' }, { status: 500 })
-    }
-
-    // Add to organization_members with pending status
-    const { error: memberError } = await supabaseAdmin
-      .from('organization_members')
-      .insert({
-        user_id: newUser.user.id,
-        role: 'participant',
-        status: 'pending',
-        invited_by: admin.userId
-      } as never)
-
-    if (memberError) {
-      return NextResponse.json({ error: memberError.message }, { status: 500 })
+      return NextResponse.json({ error: inviteError.message }, { status: 500 })
     }
 
     return NextResponse.json({

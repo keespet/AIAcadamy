@@ -4,12 +4,13 @@ import { requireAdmin } from '@/lib/admin'
 
 interface OrganizationMemberWithProfile {
   id: number
-  user_id: string
+  user_id: string | null
+  email: string | null
   role: string
   status: string
   invited_at: string
   joined_at: string | null
-  profiles: { full_name: string | null }
+  profiles: { full_name: string | null } | null
 }
 
 interface UserProgress {
@@ -32,17 +33,18 @@ export async function GET() {
   const supabase = await createClient()
 
   // Get all organization members with their profiles and progress
-  // Use profiles!user_id to explicitly specify which FK to use (avoids ambiguous relationship error)
+  // Use left join for profiles since user_id can be null for pending invites
   const { data: members, error: membersError } = await supabase
     .from('organization_members')
     .select(`
       id,
       user_id,
+      email,
       role,
       status,
       invited_at,
       joined_at,
-      profiles!user_id(full_name)
+      profiles!left(full_name)
     `)
     .order('invited_at', { ascending: false }) as { data: OrganizationMemberWithProfile[] | null, error: Error | null }
 
@@ -66,19 +68,27 @@ export async function GET() {
     .select('user_id') as { data: Certificate[] | null }
 
   const participantsWithProgress = members?.map(member => {
-    const userProgress = allProgress?.filter(p => p.user_id === member.user_id) || []
+    const userProgress = member.user_id
+      ? allProgress?.filter(p => p.user_id === member.user_id) || []
+      : []
     const completedModules = userProgress.filter(p => p.quiz_completed && (p.quiz_score ?? 0) >= 70).length
-    const hasCertificate = certificates?.some(c => c.user_id === member.user_id) || false
+    const hasCertificate = member.user_id
+      ? certificates?.some(c => c.user_id === member.user_id) || false
+      : false
     const lastActivity = userProgress
       .map(p => p.completed_at)
       .filter(Boolean)
       .sort()
       .reverse()[0] || null
 
+    // Use profile name, then email, then 'Onbekend' as fallback
+    const fullName = member.profiles?.full_name || member.email || 'Onbekend'
+
     return {
       id: member.id,
       userId: member.user_id,
-      fullName: member.profiles?.full_name || 'Onbekend',
+      email: member.email,
+      fullName,
       role: member.role,
       status: member.status,
       invitedAt: member.invited_at,
@@ -107,7 +117,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: 'Missing memberId or status' }, { status: 400 })
   }
 
-  if (!['active', 'inactive'].includes(status)) {
+  if (!['active', 'inactive', 'invited', 'pending'].includes(status)) {
     return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
   }
 
