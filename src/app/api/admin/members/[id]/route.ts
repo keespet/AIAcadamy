@@ -43,6 +43,7 @@ export async function GET(
   const { id } = await params
   const supabase = await createClient()
 
+  // Use profiles!user_id to explicitly specify which FK to use (avoids ambiguous relationship error)
   const { data: member, error } = await supabase
     .from('organization_members')
     .select(`
@@ -52,7 +53,7 @@ export async function GET(
       status,
       invited_at,
       joined_at,
-      profiles!inner(full_name)
+      profiles!user_id(full_name)
     `)
     .eq('id', id)
     .single() as { data: OrganizationMemberWithProfile | null, error: Error | null }

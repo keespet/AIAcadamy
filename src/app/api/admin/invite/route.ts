@@ -29,9 +29,33 @@ export async function POST(request: NextRequest) {
   try {
     const supabaseAdmin = createAdminClient()
 
-    // Check if user already exists
-    const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers()
-    const existingUser = existingUsers?.users?.find(u => u.email === email)
+    // Search for existing user by email using paginated listUsers
+    // This handles cases where there are more users than the default page size
+    let existingUser: { id: string; email: string } | undefined
+    let page = 1
+    const perPage = 50 // Smaller batches are faster when user is found early
+
+    while (!existingUser) {
+      const { data: usersPage, error: listError } = await supabaseAdmin.auth.admin.listUsers({
+        page,
+        perPage
+      })
+
+      if (listError) {
+        console.error('Error listing users:', listError)
+        break
+      }
+
+      if (!usersPage?.users?.length) break
+
+      const foundUser = usersPage.users.find(u => u.email?.toLowerCase() === email.toLowerCase())
+      if (foundUser) {
+        existingUser = { id: foundUser.id, email: foundUser.email || '' }
+      }
+
+      if (usersPage.users.length < perPage) break
+      page++
+    }
 
     if (existingUser) {
       // Check if already a member
@@ -118,6 +142,21 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Invite error:', error)
+
+    // Provide more specific error messages
+    if (error instanceof Error) {
+      if (error.message.includes('Missing Supabase admin credentials')) {
+        return NextResponse.json({
+          error: 'Server configuratie fout: admin credentials ontbreken. Neem contact op met de beheerder.'
+        }, { status: 500 })
+      }
+      if (error.message.includes('Invalid API key') || error.message.includes('service_role')) {
+        return NextResponse.json({
+          error: 'Server configuratie fout: ongeldige API key. Neem contact op met de beheerder.'
+        }, { status: 500 })
+      }
+    }
+
     return NextResponse.json({
       error: 'Er is een fout opgetreden bij het versturen van de uitnodiging'
     }, { status: 500 })

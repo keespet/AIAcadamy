@@ -32,6 +32,7 @@ export async function GET() {
   const supabase = await createClient()
 
   // Get all organization members with their profiles and progress
+  // Use profiles!user_id to explicitly specify which FK to use (avoids ambiguous relationship error)
   const { data: members, error: membersError } = await supabase
     .from('organization_members')
     .select(`
@@ -41,7 +42,7 @@ export async function GET() {
       status,
       invited_at,
       joined_at,
-      profiles!inner(full_name)
+      profiles!user_id(full_name)
     `)
     .order('invited_at', { ascending: false }) as { data: OrganizationMemberWithProfile[] | null, error: Error | null }
 

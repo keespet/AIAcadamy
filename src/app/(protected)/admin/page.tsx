@@ -68,6 +68,7 @@ export default async function AdminDashboardPage() {
   const certificateCount = certificates?.length || 0
 
   // Recent activity - get participants with their progress
+  // Use profiles!user_id to explicitly specify which FK to use (avoids ambiguous relationship error)
   const { data: recentMembers } = await supabase
     .from('organization_members')
     .select(`
@@ -75,7 +76,7 @@ export default async function AdminDashboardPage() {
       user_id,
       status,
       joined_at,
-      profiles!inner(full_name)
+      profiles!user_id(full_name)
     `)
     .eq('role', 'participant')
     .order('joined_at', { ascending: false, nullsFirst: false })
