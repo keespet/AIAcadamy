@@ -3,9 +3,10 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-export default function InvitePage() {
+export default function AddParticipantPage() {
   const [email, setEmail] = useState('')
   const [fullName, setFullName] = useState('')
+  const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const router = useRouter()
@@ -15,11 +16,17 @@ export default function InvitePage() {
     setLoading(true)
     setMessage(null)
 
+    if (password.length < 6) {
+      setMessage({ type: 'error', text: 'Wachtwoord moet minimaal 6 tekens bevatten' })
+      setLoading(false)
+      return
+    }
+
     try {
       const res = await fetch('/api/admin/invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, fullName })
+        body: JSON.stringify({ email, fullName, password })
       })
 
       const data = await res.json()
@@ -30,6 +37,7 @@ export default function InvitePage() {
         setMessage({ type: 'success', text: data.message })
         setEmail('')
         setFullName('')
+        setPassword('')
         // Redirect to participants after 2 seconds
         setTimeout(() => {
           router.push('/admin/participants')
@@ -44,10 +52,25 @@ export default function InvitePage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Nieuwe deelnemer uitnodigen</h1>
+      <h1 className="text-2xl font-bold mb-6">Nieuwe deelnemer toevoegen</h1>
 
       <div className="card max-w-md">
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label htmlFor="fullName" className="label">
+              Volledige naam <span style={{ color: 'var(--error)' }}>*</span>
+            </label>
+            <input
+              type="text"
+              id="fullName"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              className="input"
+              placeholder="Jan Jansen"
+              required
+            />
+          </div>
+
           <div>
             <label htmlFor="email" className="label">
               Email <span style={{ color: 'var(--error)' }}>*</span>
@@ -64,19 +87,21 @@ export default function InvitePage() {
           </div>
 
           <div>
-            <label htmlFor="fullName" className="label">
-              Volledige naam
+            <label htmlFor="password" className="label">
+              Wachtwoord <span style={{ color: 'var(--error)' }}>*</span>
             </label>
             <input
               type="text"
-              id="fullName"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
+              id="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               className="input"
-              placeholder="Jan Jansen"
+              placeholder="Minimaal 6 tekens"
+              required
+              minLength={6}
             />
             <p className="text-xs mt-1" style={{ color: 'var(--secondary)' }}>
-              Optioneel - de deelnemer kan dit later zelf aanpassen
+              Deel dit wachtwoord met de deelnemer
             </p>
           </div>
 
@@ -94,19 +119,19 @@ export default function InvitePage() {
 
           <button
             type="submit"
-            disabled={loading || !email}
+            disabled={loading || !email || !fullName || !password}
             className="btn-primary w-full"
           >
-            {loading ? 'Versturen...' : 'Uitnodiging versturen'}
+            {loading ? 'Toevoegen...' : 'Deelnemer toevoegen'}
           </button>
         </form>
 
         <div className="mt-6 pt-4 border-t" style={{ borderColor: 'var(--border)' }}>
-          <h3 className="font-medium mb-2">Wat gebeurt er?</h3>
+          <h3 className="font-medium mb-2">Na het toevoegen:</h3>
           <ul className="text-sm space-y-2" style={{ color: 'var(--secondary)' }}>
-            <li>1. De deelnemer ontvangt een email met een uitnodigingslink</li>
-            <li>2. Via de link kan de deelnemer een wachtwoord instellen</li>
-            <li>3. Na het instellen kan de deelnemer direct beginnen met de cursus</li>
+            <li>• Deel het email en wachtwoord met de deelnemer</li>
+            <li>• De deelnemer kan inloggen op {typeof window !== 'undefined' ? window.location.origin : ''}/login</li>
+            <li>• Het wachtwoord kan later gewijzigd worden in het profiel</li>
           </ul>
         </div>
       </div>

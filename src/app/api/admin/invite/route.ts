@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireAdmin } from '@/lib/admin'
-import { generateSecureToken, hashToken, getTokenExpiry } from '@/lib/tokens'
-import { sendEmail } from '@/lib/email'
-import { getInviteEmailHtml, getInviteEmailText } from '@/lib/email-templates/invite'
+import { hashPassword } from '@/lib/auth'
+import { v4 as uuidv4 } from 'uuid'
 
 interface ExistingUser {
   id: string
@@ -18,10 +17,10 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json()
-  const { email, fullName } = body
+  const { email, fullName, password } = body
 
-  if (!email) {
-    return NextResponse.json({ error: 'Email is verplicht' }, { status: 400 })
+  if (!email || !fullName || !password) {
+    return NextResponse.json({ error: 'Alle velden zijn verplicht' }, { status: 400 })
   }
 
   // Validate email format
@@ -30,24 +29,34 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Ongeldig emailadres' }, { status: 400 })
   }
 
+  if (password.length < 6) {
+    return NextResponse.json({ error: 'Wachtwoord moet minimaal 6 tekens bevatten' }, { status: 400 })
+  }
+
   const normalizedEmail = email.toLowerCase().trim()
 
   try {
     const supabaseAdmin = createAdminClient()
 
-    // Check if user already exists in our users table
+    // Check if user already exists
     const { data: existingUser } = await supabaseAdmin
       .from('users')
       .select('id, email, status')
       .eq('email', normalizedEmail)
       .single() as { data: ExistingUser | null }
 
-    // If user already exists
     if (existingUser) {
       if (existingUser.status === 'inactive') {
+        // Reactivate inactive user
+        const passwordHash = await hashPassword(password)
         await supabaseAdmin
           .from('users')
-          .update({ status: 'active' } as never)
+          .update({
+            status: 'active',
+            password_hash: passwordHash,
+            full_name: fullName,
+            updated_at: new Date().toISOString()
+          } as never)
           .eq('id', existingUser.id)
 
         return NextResponse.json({
@@ -57,46 +66,12 @@ export async function POST(request: NextRequest) {
       }
 
       return NextResponse.json({
-        error: 'Deze gebruiker is al geregistreerd'
+        error: 'Dit emailadres is al geregistreerd'
       }, { status: 400 })
     }
 
-    // Check for existing pending invite (user with status 'pending')
-    const { data: pendingUser } = await supabaseAdmin
-      .from('users')
-      .select('id, status, created_at')
-      .eq('email', normalizedEmail)
-      .eq('status', 'pending')
-      .single() as { data: { id: string; status: string; created_at: string } | null }
-
-    if (pendingUser) {
-      // Check if invite is older than expiry (default 72 hours)
-      const expiryHours = parseInt(process.env.INVITE_TOKEN_EXPIRY_HOURS || '72')
-      const createdAt = new Date(pendingUser.created_at)
-      const expiryTime = new Date(createdAt.getTime() + expiryHours * 60 * 60 * 1000)
-      const isExpired = new Date() > expiryTime
-
-      if (!isExpired) {
-        return NextResponse.json({
-          error: 'Er is al een actieve uitnodiging voor dit emailadres'
-        }, { status: 400 })
-      }
-
-      // Delete expired pending user to allow fresh invite
-      await supabaseAdmin
-        .from('users')
-        .delete()
-        .eq('id', pendingUser.id)
-    }
-
-    // Generate secure token
-    const rawToken = generateSecureToken()
-    const hashedToken = hashToken(rawToken)
-    const expiryHours = parseInt(process.env.INVITE_TOKEN_EXPIRY_HOURS || '72')
-    const tokenExpiry = getTokenExpiry(expiryHours)
-
-    // Create pending user with invite token
-    const { v4: uuidv4 } = await import('uuid')
+    // Hash password and create user
+    const passwordHash = await hashPassword(password)
     const userId = uuidv4()
 
     const { error: insertError } = await supabaseAdmin
@@ -104,70 +79,26 @@ export async function POST(request: NextRequest) {
       .insert({
         id: userId,
         email: normalizedEmail,
-        password_hash: '', // Will be set during registration
-        full_name: fullName || null,
+        password_hash: passwordHash,
+        full_name: fullName,
         role: 'participant',
-        status: 'pending',
-        invite_token: hashedToken,
-        token_expires_at: tokenExpiry.toISOString(),
-        invited_by: admin.userId,
+        status: 'active',
       } as never)
 
     if (insertError) {
       console.error('User insert error:', insertError)
-      return NextResponse.json({ error: insertError.message }, { status: 500 })
-    }
-
-    // Build invite URL with raw token
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
-    const inviteUrl = `${siteUrl}/register/invite?token=${rawToken}`
-
-    // Send invite email via SMTP
-    try {
-      await sendEmail({
-        to: normalizedEmail,
-        subject: 'Uitnodiging voor AI Academy',
-        html: getInviteEmailHtml({ inviteUrl, fullName, expiryHours }),
-        text: getInviteEmailText({ inviteUrl, fullName, expiryHours })
-      })
-    } catch (emailError) {
-      // Rollback: delete the user record if email fails
-      await supabaseAdmin
-        .from('users')
-        .delete()
-        .eq('id', userId)
-
-      const errorMessage = emailError instanceof Error ? emailError.message : 'Onbekende fout'
-      console.error('Email send error:', errorMessage)
-
-      return NextResponse.json({
-        error: `Fout bij het versturen van de email: ${errorMessage}`
-      }, { status: 500 })
+      return NextResponse.json({ error: 'Fout bij het aanmaken van de deelnemer' }, { status: 500 })
     }
 
     return NextResponse.json({
       success: true,
-      message: 'Uitnodiging verstuurd naar ' + normalizedEmail
+      message: `Deelnemer ${fullName} is toegevoegd`
     })
 
   } catch (error) {
-    console.error('Invite error:', error)
-
-    if (error instanceof Error) {
-      if (error.message.includes('Missing Supabase admin credentials')) {
-        return NextResponse.json({
-          error: 'Server configuratie fout: admin credentials ontbreken.'
-        }, { status: 500 })
-      }
-      if (error.message.includes('SMTP')) {
-        return NextResponse.json({
-          error: 'Email configuratie fout: ' + error.message
-        }, { status: 500 })
-      }
-    }
-
+    console.error('Add participant error:', error)
     return NextResponse.json({
-      error: 'Er is een fout opgetreden bij het versturen van de uitnodiging'
+      error: 'Er is een fout opgetreden bij het toevoegen van de deelnemer'
     }, { status: 500 })
   }
 }

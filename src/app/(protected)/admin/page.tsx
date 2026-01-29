@@ -115,7 +115,7 @@ export default async function AdminDashboardPage() {
           <h2 className="text-lg font-semibold mb-4">Snelle acties</h2>
           <div className="space-y-3">
             <Link href="/admin/invite" className="btn-primary w-full">
-              Nieuwe deelnemer uitnodigen
+              Nieuwe deelnemer toevoegen
             </Link>
             <Link href="/admin/participants" className="btn-secondary w-full">
               Alle deelnemers bekijken
