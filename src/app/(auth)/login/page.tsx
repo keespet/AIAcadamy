@@ -3,7 +3,6 @@
 import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/client'
 
 function LoginForm() {
   const [email, setEmail] = useState('')
@@ -20,23 +19,27 @@ function LoginForm() {
     setError(null)
     setLoading(true)
 
-    const supabase = createClient()
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      })
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
+      const data = await res.json()
 
-    if (error) {
-      setError(error.message === 'Invalid login credentials'
-        ? 'Onjuiste email of wachtwoord'
-        : error.message)
+      if (data.error) {
+        setError(data.error)
+        setLoading(false)
+        return
+      }
+
+      router.push('/dashboard')
+      router.refresh()
+    } catch {
+      setError('Er is een fout opgetreden bij het inloggen')
       setLoading(false)
-      return
     }
-
-    router.push('/dashboard')
-    router.refresh()
   }
 
   return (

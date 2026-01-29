@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/client'
 
 export default function RegisterPage() {
   const [fullName, setFullName] = useState('')
@@ -10,8 +10,8 @@ export default function RegisterPage() {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
   const [loading, setLoading] = useState(false)
+  const router = useRouter()
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -30,60 +30,28 @@ export default function RegisterPage() {
       return
     }
 
-    const supabase = createClient()
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, fullName }),
+      })
 
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          full_name: fullName,
-        },
-        emailRedirectTo: `${window.location.origin}/api/auth/callback`,
-      },
-    })
+      const data = await res.json()
 
-    if (error) {
-      console.error('Supabase signup error:', error)
-      console.error('Error message:', error.message)
-      console.error('Error code:', error.code)
-
-      const errorMessage = error.message || ''
-      if (errorMessage.includes('already registered')) {
-        setError('Dit emailadres is al geregistreerd')
-      } else if (errorMessage.includes('not authorized') || errorMessage.includes('Signups not allowed')) {
-        setError('Registratie is momenteel uitgeschakeld. Neem contact op met de beheerder.')
-      } else if (errorMessage && typeof errorMessage === 'string' && errorMessage !== '{}') {
-        setError(errorMessage)
-      } else {
-        setError('Er is een fout opgetreden bij het registreren. Probeer het later opnieuw.')
+      if (data.error) {
+        setError(data.error)
+        setLoading(false)
+        return
       }
+
+      // User is automatically logged in after registration
+      router.push('/dashboard')
+      router.refresh()
+    } catch {
+      setError('Er is een fout opgetreden bij het registreren')
       setLoading(false)
-      return
     }
-
-    setSuccess(true)
-    setLoading(false)
-  }
-
-  if (success) {
-    return (
-      <div className="card text-center">
-        <div className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center" style={{ backgroundColor: 'rgba(34, 197, 94, 0.1)' }}>
-          <svg className="w-8 h-8" style={{ color: 'var(--success)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-          </svg>
-        </div>
-        <h2 className="text-2xl font-bold mb-2">Controleer je email</h2>
-        <p style={{ color: 'var(--secondary)' }}>
-          We hebben een bevestigingslink gestuurd naar <strong>{email}</strong>.
-          Klik op de link om je account te activeren.
-        </p>
-        <Link href="/login" className="btn-primary mt-6 inline-block">
-          Terug naar inloggen
-        </Link>
-      </div>
-    )
   }
 
   return (

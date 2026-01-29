@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 
 interface NavigationProps {
   userName?: string | null
@@ -17,8 +16,7 @@ export default function Navigation({ userName, isAdmin }: NavigationProps) {
 
   const handleLogout = async () => {
     setLoading(true)
-    const supabase = createClient()
-    await supabase.auth.signOut()
+    await fetch('/api/auth/logout', { method: 'POST' })
     router.push('/login')
     router.refresh()
   }

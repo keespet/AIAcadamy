@@ -1,4 +1,5 @@
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { getCurrentUser } from '@/lib/auth'
 import { redirect, notFound } from 'next/navigation'
 import ModuleContent from './ModuleContent'
 import { Module, UserProgress } from '@/types/database'
@@ -15,12 +16,13 @@ export default async function ModulePage({ params }: ModulePageProps) {
     notFound()
   }
 
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getCurrentUser()
 
   if (!user) {
     redirect('/login')
   }
+
+  const supabase = createAdminClient()
 
   // Fetch the module
   const { data: moduleData } = await supabase

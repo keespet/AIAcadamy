@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { hashToken, isValidTokenFormat } from '@/lib/tokens'
 
-interface InviteRecord {
-  id: number
+interface UserRecord {
+  id: string
   email: string | null
   status: string
   token_expires_at: string | null
@@ -25,15 +25,15 @@ export async function GET(request: NextRequest) {
     const supabaseAdmin = createAdminClient()
     const hashedToken = hashToken(token)
 
-    // Find invite by hashed token
-    const { data: invite, error } = await supabaseAdmin
-      .from('organization_members')
+    // Find user by hashed invite token
+    const { data: user, error } = await supabaseAdmin
+      .from('users')
       .select('id, email, status, token_expires_at')
       .eq('invite_token', hashedToken)
-      .is('user_id', null)
-      .single() as { data: InviteRecord | null; error: Error | null }
+      .eq('status', 'pending')
+      .single() as { data: UserRecord | null; error: Error | null }
 
-    if (error || !invite) {
+    if (error || !user) {
       return NextResponse.json({
         valid: false,
         error: 'Uitnodiging niet gevonden of al gebruikt'
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Check expiration
-    if (invite.token_expires_at && new Date(invite.token_expires_at) < new Date()) {
+    if (user.token_expires_at && new Date(user.token_expires_at) < new Date()) {
       return NextResponse.json({
         valid: false,
         error: 'Deze uitnodiging is verlopen'
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       valid: true,
-      email: invite.email
+      email: user.email
     })
 
   } catch (error) {

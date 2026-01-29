@@ -1,11 +1,13 @@
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import Link from 'next/link'
 
-interface OrganizationMember {
-  id: number
-  user_id: string
-  status: 'active' | 'inactive' | 'pending'
+interface UserRecord {
+  id: string
+  full_name: string | null
+  email: string
   role: 'admin' | 'participant'
+  status: 'active' | 'inactive' | 'pending'
+  created_at: string
 }
 
 interface UserProgress {
@@ -18,21 +20,14 @@ interface Certificate {
   user_id: string
 }
 
-interface RecentMember {
-  id: number
-  user_id: string
-  status: string
-  joined_at: string | null
-  profiles: { full_name: string | null }
-}
-
 export default async function AdminDashboardPage() {
-  const supabase = await createClient()
+  const supabase = createAdminClient()
 
-  // Get all members
-  const { data: members } = await supabase
-    .from('organization_members')
-    .select('id, user_id, status, role') as { data: OrganizationMember[] | null }
+  // Get all users (participants)
+  const { data: users } = await supabase
+    .from('users')
+    .select('id, full_name, email, role, status, created_at')
+    .eq('role', 'participant') as { data: UserRecord[] | null }
 
   // Get module count
   const { count: totalModules } = await supabase
@@ -50,15 +45,15 @@ export default async function AdminDashboardPage() {
     .select('user_id') as { data: Certificate[] | null }
 
   // Calculate statistics
-  const participants = members?.filter(m => m.role === 'participant') || []
-  const activeParticipants = participants.filter(m => m.status === 'active')
-  const inactiveParticipants = participants.filter(m => m.status === 'inactive')
-  const pendingParticipants = participants.filter(m => m.status === 'pending')
+  const participants = users || []
+  const activeParticipants = participants.filter(u => u.status === 'active')
+  const inactiveParticipants = participants.filter(u => u.status === 'inactive')
+  const pendingParticipants = participants.filter(u => u.status === 'pending')
 
   // Calculate average progress
   let totalProgress = 0
-  participants.forEach(member => {
-    const userProgress = allProgress?.filter(p => p.user_id === member.user_id) || []
+  participants.forEach(user => {
+    const userProgress = allProgress?.filter(p => p.user_id === user.id) || []
     const completed = userProgress.filter(p => p.quiz_completed && (p.quiz_score ?? 0) >= 70).length
     totalProgress += totalModules ? (completed / totalModules) * 100 : 0
   })
@@ -67,20 +62,10 @@ export default async function AdminDashboardPage() {
   // Count certificates
   const certificateCount = certificates?.length || 0
 
-  // Recent activity - get participants with their progress
-  // Use profiles!user_id to explicitly specify which FK to use (avoids ambiguous relationship error)
-  const { data: recentMembers } = await supabase
-    .from('organization_members')
-    .select(`
-      id,
-      user_id,
-      status,
-      joined_at,
-      profiles!user_id(full_name)
-    `)
-    .eq('role', 'participant')
-    .order('joined_at', { ascending: false, nullsFirst: false })
-    .limit(5) as { data: RecentMember[] | null }
+  // Recent participants
+  const recentParticipants = [...participants]
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, 5)
 
   return (
     <div>
@@ -147,19 +132,19 @@ export default async function AdminDashboardPage() {
             Bekijk alle
           </Link>
         </div>
-        {recentMembers && recentMembers.length > 0 ? (
+        {recentParticipants.length > 0 ? (
           <div className="space-y-3">
-            {recentMembers.map(member => {
-              const userProgress = allProgress?.filter(p => p.user_id === member.user_id) || []
+            {recentParticipants.map(user => {
+              const userProgress = allProgress?.filter(p => p.user_id === user.id) || []
               const completed = userProgress.filter(p => p.quiz_completed && (p.quiz_score ?? 0) >= 70).length
               const progress = totalModules ? Math.round((completed / totalModules) * 100) : 0
 
               return (
-                <div key={member.id} className="flex justify-between items-center py-2 border-b" style={{ borderColor: 'var(--border)' }}>
+                <div key={user.id} className="flex justify-between items-center py-2 border-b" style={{ borderColor: 'var(--border)' }}>
                   <div>
-                    <p className="font-medium">{(member.profiles as { full_name: string | null })?.full_name || 'Onbekend'}</p>
+                    <p className="font-medium">{user.full_name || user.email}</p>
                     <p className="text-sm" style={{ color: 'var(--secondary)' }}>
-                      Gestart: {member.joined_at ? new Date(member.joined_at).toLocaleDateString('nl-NL') : 'Nog niet gestart'}
+                      Gestart: {new Date(user.created_at).toLocaleDateString('nl-NL')}
                     </p>
                   </div>
                   <div className="text-right">

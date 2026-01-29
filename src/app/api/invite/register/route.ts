@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { hashToken, isValidTokenFormat } from '@/lib/tokens'
+import { hashPassword, createToken, setAuthCookie } from '@/lib/auth'
 
 interface RegisterBody {
   token: string
@@ -8,11 +9,12 @@ interface RegisterBody {
   fullName: string
 }
 
-interface InviteRecord {
-  id: number
+interface UserRecord {
+  id: string
   email: string | null
   status: string
   token_expires_at: string | null
+  full_name: string | null
 }
 
 export async function POST(request: NextRequest) {
@@ -43,74 +45,58 @@ export async function POST(request: NextRequest) {
     const hashedToken = hashToken(token)
 
     // Find and validate invite
-    const { data: invite, error: inviteError } = await supabaseAdmin
-      .from('organization_members')
-      .select('id, email, status, token_expires_at')
+    const { data: user, error: userError } = await supabaseAdmin
+      .from('users')
+      .select('id, email, status, token_expires_at, full_name')
       .eq('invite_token', hashedToken)
-      .is('user_id', null)
-      .single() as { data: InviteRecord | null; error: Error | null }
+      .eq('status', 'pending')
+      .single() as { data: UserRecord | null; error: Error | null }
 
-    if (inviteError || !invite) {
+    if (userError || !user) {
       return NextResponse.json({
         error: 'Uitnodiging niet gevonden of al gebruikt'
       }, { status: 404 })
     }
 
     // Check expiration
-    if (invite.token_expires_at && new Date(invite.token_expires_at) < new Date()) {
+    if (user.token_expires_at && new Date(user.token_expires_at) < new Date()) {
       return NextResponse.json({
         error: 'Deze uitnodiging is verlopen'
       }, { status: 410 })
     }
 
-    // Create Supabase Auth user
-    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email: invite.email!,
-      password: password,
-      email_confirm: true, // Auto-confirm since they were invited
-      user_metadata: {
-        full_name: fullName
-      }
-    })
+    // Hash password
+    const passwordHash = await hashPassword(password)
 
-    if (authError) {
-      if (authError.message.includes('already registered')) {
-        return NextResponse.json({
-          error: 'Dit emailadres is al geregistreerd'
-        }, { status: 400 })
-      }
-      console.error('Auth create error:', authError)
-      return NextResponse.json({
-        error: 'Fout bij het aanmaken van het account'
-      }, { status: 500 })
-    }
-
-    if (!authData.user) {
-      return NextResponse.json({
-        error: 'Fout bij het aanmaken van het account'
-      }, { status: 500 })
-    }
-
-    // Update organization_members: link user_id, clear token, set status
+    // Update user: set password, clear token, set status to active
     const { error: updateError } = await supabaseAdmin
-      .from('organization_members')
+      .from('users')
       .update({
-        user_id: authData.user.id,
+        password_hash: passwordHash,
+        full_name: fullName,
         status: 'active',
-        joined_at: new Date().toISOString(),
         invite_token: null,
-        token_expires_at: null
+        token_expires_at: null,
+        updated_at: new Date().toISOString(),
       } as never)
-      .eq('id', invite.id)
+      .eq('id', user.id)
 
     if (updateError) {
-      // Rollback: delete the auth user if member update fails
-      await supabaseAdmin.auth.admin.deleteUser(authData.user.id)
-      console.error('Member update error:', updateError)
+      console.error('User update error:', updateError)
       return NextResponse.json({
         error: 'Fout bij het voltooien van de registratie'
       }, { status: 500 })
     }
+
+    // Create JWT token and log user in
+    const jwtToken = await createToken({
+      userId: user.id,
+      email: user.email!,
+      fullName: fullName,
+      role: 'participant',
+    })
+
+    await setAuthCookie(jwtToken)
 
     return NextResponse.json({
       success: true,

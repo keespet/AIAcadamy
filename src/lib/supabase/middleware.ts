@@ -1,35 +1,24 @@
-import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { jwtVerify } from 'jose'
+
+const JWT_SECRET = new TextEncoder().encode(
+  process.env.JWT_SECRET || 'your-secret-key-change-in-production'
+)
+
+const COOKIE_NAME = 'auth-token'
+
+async function verifyTokenMiddleware(token: string): Promise<boolean> {
+  try {
+    await jwtVerify(token, JWT_SECRET)
+    return true
+  } catch {
+    return false
+  }
+}
 
 export async function updateSession(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({
-    request,
-  })
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll()
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          supabaseResponse = NextResponse.next({
-            request,
-          })
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          )
-        },
-      },
-    }
-  )
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const token = request.cookies.get(COOKIE_NAME)?.value
+  const isAuthenticated = token ? await verifyTokenMiddleware(token) : false
 
   // Protected routes
   const protectedPaths = ['/dashboard', '/module', '/quiz', '/certificate', '/profile', '/admin']
@@ -43,13 +32,13 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname.startsWith(path)
   )
 
-  if (isProtectedPath && !user) {
+  if (isProtectedPath && !isAuthenticated) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
   }
 
-  if (isAuthPath && user) {
+  if (isAuthPath && isAuthenticated) {
     const url = request.nextUrl.clone()
     url.pathname = '/dashboard'
     return NextResponse.redirect(url)
@@ -58,9 +47,9 @@ export async function updateSession(request: NextRequest) {
   // Redirect root to dashboard if logged in, otherwise to login
   if (request.nextUrl.pathname === '/') {
     const url = request.nextUrl.clone()
-    url.pathname = user ? '/dashboard' : '/login'
+    url.pathname = isAuthenticated ? '/dashboard' : '/login'
     return NextResponse.redirect(url)
   }
 
-  return supabaseResponse
+  return NextResponse.next()
 }

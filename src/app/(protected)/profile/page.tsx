@@ -1,11 +1,16 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { User } from '@supabase/supabase-js'
+
+interface UserProfile {
+  id: string
+  email: string
+  fullName: string | null
+  role: string
+}
 
 export default function ProfilePage() {
-  const [user, setUser] = useState<User | null>(null)
+  const [user, setUser] = useState<UserProfile | null>(null)
   const [fullName, setFullName] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -16,19 +21,11 @@ export default function ProfilePage() {
 
   useEffect(() => {
     const fetchProfile = async () => {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-
-      if (user) {
-        setUser(user)
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('full_name')
-          .eq('id', user.id)
-          .single()
-
-        const profile = profileData as { full_name: string | null } | null
-        setFullName(profile?.full_name || user.user_metadata?.full_name || '')
+      const res = await fetch('/api/auth/profile')
+      if (res.ok) {
+        const data = await res.json()
+        setUser(data)
+        setFullName(data.fullName || '')
       }
       setLoading(false)
     }
@@ -43,17 +40,16 @@ export default function ProfilePage() {
     setSaving(true)
     setMessage(null)
 
-    const supabase = createClient()
+    const res = await fetch('/api/auth/profile', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fullName }),
+    })
 
-    const { error } = await supabase
-      .from('profiles')
-      .upsert({
-        id: user.id,
-        full_name: fullName,
-      } as never)
+    const data = await res.json()
 
-    if (error) {
-      setMessage({ type: 'error', text: 'Er is een fout opgetreden bij het opslaan.' })
+    if (data.error) {
+      setMessage({ type: 'error', text: data.error })
     } else {
       setMessage({ type: 'success', text: 'Je profiel is bijgewerkt!' })
     }
@@ -76,14 +72,17 @@ export default function ProfilePage() {
     }
 
     setChangingPassword(true)
-    const supabase = createClient()
 
-    const { error } = await supabase.auth.updateUser({
-      password: newPassword,
+    const res = await fetch('/api/auth/profile', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ newPassword }),
     })
 
-    if (error) {
-      setMessage({ type: 'error', text: error.message })
+    const data = await res.json()
+
+    if (data.error) {
+      setMessage({ type: 'error', text: data.error })
     } else {
       setMessage({ type: 'success', text: 'Je wachtwoord is gewijzigd!' })
       setNewPassword('')

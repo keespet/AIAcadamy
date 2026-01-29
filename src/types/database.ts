@@ -9,6 +9,47 @@ export type Json =
 export interface Database {
   public: {
     Tables: {
+      users: {
+        Row: {
+          id: string
+          email: string
+          password_hash: string
+          full_name: string | null
+          role: 'admin' | 'participant'
+          status: 'active' | 'inactive' | 'pending'
+          invite_token: string | null
+          token_expires_at: string | null
+          invited_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          email: string
+          password_hash: string
+          full_name?: string | null
+          role?: 'admin' | 'participant'
+          status?: 'active' | 'inactive' | 'pending'
+          invite_token?: string | null
+          token_expires_at?: string | null
+          invited_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          email?: string
+          password_hash?: string
+          full_name?: string | null
+          role?: 'admin' | 'participant'
+          status?: 'active' | 'inactive' | 'pending'
+          invite_token?: string | null
+          token_expires_at?: string | null
+          invited_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
       profiles: {
         Row: {
           id: string
@@ -172,6 +213,7 @@ export interface Database {
   }
 }
 
+export type DbUser = Database['public']['Tables']['users']['Row']
 export type Profile = Database['public']['Tables']['profiles']['Row']
 export type Module = Database['public']['Tables']['modules']['Row']
 export type Question = Database['public']['Tables']['questions']['Row']

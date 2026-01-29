@@ -81,8 +81,11 @@ function InviteRegisterContent() {
       }
 
       setSuccess(true)
-      // Redirect to login after 3 seconds
-      setTimeout(() => router.push('/login'), 3000)
+      // Redirect to dashboard after 2 seconds (user is now logged in)
+      setTimeout(() => {
+        router.push('/dashboard')
+        router.refresh()
+      }, 2000)
     } catch {
       setError('Er is een fout opgetreden')
     } finally {
@@ -133,7 +136,7 @@ function InviteRegisterContent() {
         </div>
         <h2 className="text-2xl font-bold mb-2">Account aangemaakt!</h2>
         <p style={{ color: 'var(--secondary)' }}>
-          Je account is succesvol aangemaakt. Je wordt doorgestuurd naar de inlogpagina...
+          Je account is succesvol aangemaakt. Je wordt doorgestuurd naar het dashboard...
         </p>
       </div>
     )

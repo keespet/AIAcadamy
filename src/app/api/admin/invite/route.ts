@@ -5,10 +5,10 @@ import { generateSecureToken, hashToken, getTokenExpiry } from '@/lib/tokens'
 import { sendEmail } from '@/lib/email'
 import { getInviteEmailHtml, getInviteEmailText } from '@/lib/email-templates/invite'
 
-interface ExistingMember {
-  id: number
+interface ExistingUser {
+  id: string
+  email: string
   status: string
-  token_expires_at: string | null
 }
 
 export async function POST(request: NextRequest) {
@@ -35,91 +35,46 @@ export async function POST(request: NextRequest) {
   try {
     const supabaseAdmin = createAdminClient()
 
-    // Search for existing user by email using paginated listUsers
-    let existingUser: { id: string; email: string } | undefined
-    let page = 1
-    const perPage = 50
+    // Check if user already exists in our users table
+    const { data: existingUser } = await supabaseAdmin
+      .from('users')
+      .select('id, email, status')
+      .eq('email', normalizedEmail)
+      .single() as { data: ExistingUser | null }
 
-    while (!existingUser) {
-      const { data: usersPage, error: listError } = await supabaseAdmin.auth.admin.listUsers({
-        page,
-        perPage
-      })
-
-      if (listError) {
-        console.error('Error listing users:', listError)
-        break
-      }
-
-      if (!usersPage?.users?.length) break
-
-      const foundUser = usersPage.users.find(u => u.email?.toLowerCase() === normalizedEmail)
-      if (foundUser) {
-        existingUser = { id: foundUser.id, email: foundUser.email || '' }
-      }
-
-      if (usersPage.users.length < perPage) break
-      page++
-    }
-
-    // If user already exists in Supabase Auth
+    // If user already exists
     if (existingUser) {
-      const { data: existingMember } = await supabaseAdmin
-        .from('organization_members')
-        .select('id, status')
-        .eq('user_id', existingUser.id)
-        .single() as { data: ExistingMember | null }
+      if (existingUser.status === 'inactive') {
+        await supabaseAdmin
+          .from('users')
+          .update({ status: 'active' } as never)
+          .eq('id', existingUser.id)
 
-      if (existingMember) {
-        if (existingMember.status === 'inactive') {
-          await supabaseAdmin
-            .from('organization_members')
-            .update({ status: 'active' } as never)
-            .eq('id', existingMember.id)
-
-          return NextResponse.json({
-            success: true,
-            message: 'Deelnemer is opnieuw geactiveerd'
-          })
-        }
         return NextResponse.json({
-          error: 'Deze gebruiker is al een deelnemer'
-        }, { status: 400 })
-      }
-
-      // Add existing user as active member (no invite needed)
-      const { error: memberError } = await supabaseAdmin
-        .from('organization_members')
-        .insert({
-          user_id: existingUser.id,
-          role: 'participant',
-          status: 'active',
-          invited_by: admin.userId,
-          joined_at: new Date().toISOString()
-        } as never)
-
-      if (memberError) {
-        return NextResponse.json({ error: memberError.message }, { status: 500 })
+          success: true,
+          message: 'Deelnemer is opnieuw geactiveerd'
+        })
       }
 
       return NextResponse.json({
-        success: true,
-        message: 'Bestaande gebruiker toegevoegd als deelnemer'
-      })
+        error: 'Deze gebruiker is al geregistreerd'
+      }, { status: 400 })
     }
 
-    // Check for existing pending invite
-    const { data: existingInvite } = await supabaseAdmin
-      .from('organization_members')
-      .select('id, status, token_expires_at')
+    // Check for existing pending invite (user with status 'pending')
+    const { data: pendingUser } = await supabaseAdmin
+      .from('users')
+      .select('id, status, created_at')
       .eq('email', normalizedEmail)
-      .is('user_id', null)
-      .single() as { data: ExistingMember | null }
+      .eq('status', 'pending')
+      .single() as { data: { id: string; status: string; created_at: string } | null }
 
-    if (existingInvite) {
-      // Check if invite is expired - allow resend if expired
-      const isExpired = existingInvite.token_expires_at &&
-        new Date(existingInvite.token_expires_at) < new Date()
+    if (pendingUser) {
+      // Check if invite is older than expiry (default 72 hours)
+      const expiryHours = parseInt(process.env.INVITE_TOKEN_EXPIRY_HOURS || '72')
+      const createdAt = new Date(pendingUser.created_at)
+      const expiryTime = new Date(createdAt.getTime() + expiryHours * 60 * 60 * 1000)
+      const isExpired = new Date() > expiryTime
 
       if (!isExpired) {
         return NextResponse.json({
@@ -127,11 +82,11 @@ export async function POST(request: NextRequest) {
         }, { status: 400 })
       }
 
-      // Delete expired invite to allow fresh one
+      // Delete expired pending user to allow fresh invite
       await supabaseAdmin
-        .from('organization_members')
+        .from('users')
         .delete()
-        .eq('id', existingInvite.id)
+        .eq('id', pendingUser.id)
     }
 
     // Generate secure token
@@ -140,22 +95,27 @@ export async function POST(request: NextRequest) {
     const expiryHours = parseInt(process.env.INVITE_TOKEN_EXPIRY_HOURS || '72')
     const tokenExpiry = getTokenExpiry(expiryHours)
 
-    // Create organization_members record with token
-    const { error: memberError } = await supabaseAdmin
-      .from('organization_members')
+    // Create pending user with invite token
+    const { v4: uuidv4 } = await import('uuid')
+    const userId = uuidv4()
+
+    const { error: insertError } = await supabaseAdmin
+      .from('users')
       .insert({
+        id: userId,
         email: normalizedEmail,
-        user_id: null,
+        password_hash: '', // Will be set during registration
+        full_name: fullName || null,
         role: 'participant',
-        status: 'invited',
-        invited_by: admin.userId,
+        status: 'pending',
         invite_token: hashedToken,
-        token_expires_at: tokenExpiry.toISOString()
+        token_expires_at: tokenExpiry.toISOString(),
+        invited_by: admin.userId,
       } as never)
 
-    if (memberError) {
-      console.error('Member insert error:', memberError)
-      return NextResponse.json({ error: memberError.message }, { status: 500 })
+    if (insertError) {
+      console.error('User insert error:', insertError)
+      return NextResponse.json({ error: insertError.message }, { status: 500 })
     }
 
     // Build invite URL with raw token
@@ -171,12 +131,11 @@ export async function POST(request: NextRequest) {
         text: getInviteEmailText({ inviteUrl, fullName, expiryHours })
       })
     } catch (emailError) {
-      // Rollback: delete the organization_members record if email fails
+      // Rollback: delete the user record if email fails
       await supabaseAdmin
-        .from('organization_members')
+        .from('users')
         .delete()
-        .eq('email', normalizedEmail)
-        .is('user_id', null)
+        .eq('id', userId)
 
       const errorMessage = emailError instanceof Error ? emailError.message : 'Onbekende fout'
       console.error('Email send error:', errorMessage)

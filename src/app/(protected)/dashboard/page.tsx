@@ -1,4 +1,5 @@
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { getCurrentUser } from '@/lib/auth'
 import Link from 'next/link'
 import { Module, UserProgress } from '@/types/database'
 
@@ -9,7 +10,7 @@ type ModuleWithProgress = Module & {
 }
 
 async function getModulesWithProgress(userId: string): Promise<ModuleWithProgress[]> {
-  const supabase = await createClient()
+  const supabase = createAdminClient()
 
   const { data: modulesData } = await supabase
     .from('modules')
@@ -63,8 +64,7 @@ async function getModulesWithProgress(userId: string): Promise<ModuleWithProgres
 }
 
 export default async function DashboardPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getCurrentUser()
 
   if (!user) {
     return null // Middleware will redirect
@@ -74,14 +74,7 @@ export default async function DashboardPage() {
   const completedCount = modules.filter(m => m.status === 'completed').length
   const progressPercentage = (completedCount / modules.length) * 100
 
-  const { data: profileData } = await supabase
-    .from('profiles')
-    .select('full_name')
-    .eq('id', user.id)
-    .single()
-
-  const profile = profileData as { full_name: string | null } | null
-  const userName = profile?.full_name || user.user_metadata?.full_name || 'daar'
+  const userName = user.full_name || 'daar'
 
   return (
     <div>

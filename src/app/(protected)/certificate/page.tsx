@@ -1,4 +1,5 @@
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { getCurrentUser } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import CertificateContent from './CertificateContent'
 import Link from 'next/link'
@@ -6,12 +7,13 @@ import { Module, UserProgress, Certificate } from '@/types/database'
 import { v4 as uuidv4 } from 'uuid'
 
 export default async function CertificatePage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getCurrentUser()
 
   if (!user) {
     redirect('/login')
   }
+
+  const supabase = createAdminClient()
 
   // Get all modules
   const { data: modulesData } = await supabase
@@ -115,14 +117,7 @@ export default async function CertificatePage() {
   }
 
   // Get user name
-  const { data: profileData } = await supabase
-    .from('profiles')
-    .select('full_name')
-    .eq('id', user.id)
-    .single()
-
-  const profile = profileData as { full_name: string | null } | null
-  const userName = profile?.full_name || user.user_metadata?.full_name || 'Onbekend'
+  const userName = user.full_name || 'Onbekend'
 
   return (
     <CertificateContent
