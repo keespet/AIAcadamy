@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireAdmin } from '@/lib/admin'
+import { generateSecureToken, hashToken, getTokenExpiry } from '@/lib/tokens'
+import { sendEmail } from '@/lib/email'
+import { getInviteEmailHtml, getInviteEmailText } from '@/lib/email-templates/invite'
 
 interface ExistingMember {
   id: number
   status: string
+  token_expires_at: string | null
 }
 
 export async function POST(request: NextRequest) {
@@ -26,14 +30,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Ongeldig emailadres' }, { status: 400 })
   }
 
+  const normalizedEmail = email.toLowerCase().trim()
+
   try {
     const supabaseAdmin = createAdminClient()
 
     // Search for existing user by email using paginated listUsers
-    // This handles cases where there are more users than the default page size
     let existingUser: { id: string; email: string } | undefined
     let page = 1
-    const perPage = 50 // Smaller batches are faster when user is found early
+    const perPage = 50
 
     while (!existingUser) {
       const { data: usersPage, error: listError } = await supabaseAdmin.auth.admin.listUsers({
@@ -48,7 +53,7 @@ export async function POST(request: NextRequest) {
 
       if (!usersPage?.users?.length) break
 
-      const foundUser = usersPage.users.find(u => u.email?.toLowerCase() === email.toLowerCase())
+      const foundUser = usersPage.users.find(u => u.email?.toLowerCase() === normalizedEmail)
       if (foundUser) {
         existingUser = { id: foundUser.id, email: foundUser.email || '' }
       }
@@ -57,8 +62,8 @@ export async function POST(request: NextRequest) {
       page++
     }
 
+    // If user already exists in Supabase Auth
     if (existingUser) {
-      // Check if already a member
       const { data: existingMember } = await supabaseAdmin
         .from('organization_members')
         .select('id, status')
@@ -67,7 +72,6 @@ export async function POST(request: NextRequest) {
 
       if (existingMember) {
         if (existingMember.status === 'inactive') {
-          // Reactivate the member
           await supabaseAdmin
             .from('organization_members')
             .update({ status: 'active' } as never)
@@ -83,7 +87,7 @@ export async function POST(request: NextRequest) {
         }, { status: 400 })
       }
 
-      // Add existing user as member
+      // Add existing user as active member (no invite needed)
       const { error: memberError } = await supabaseAdmin
         .from('organization_members')
         .insert({
@@ -104,29 +108,49 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Check if there's already a pending invite for this email
+    // Check for existing pending invite
     const { data: existingInvite } = await supabaseAdmin
       .from('organization_members')
-      .select('id, status')
-      .eq('email', email.toLowerCase())
+      .select('id, status, token_expires_at')
+      .eq('email', normalizedEmail)
       .is('user_id', null)
-      .single()
+      .single() as { data: ExistingMember | null }
 
     if (existingInvite) {
-      return NextResponse.json({
-        error: 'Er is al een uitnodiging verstuurd naar dit emailadres'
-      }, { status: 400 })
+      // Check if invite is expired - allow resend if expired
+      const isExpired = existingInvite.token_expires_at &&
+        new Date(existingInvite.token_expires_at) < new Date()
+
+      if (!isExpired) {
+        return NextResponse.json({
+          error: 'Er is al een actieve uitnodiging voor dit emailadres'
+        }, { status: 400 })
+      }
+
+      // Delete expired invite to allow fresh one
+      await supabaseAdmin
+        .from('organization_members')
+        .delete()
+        .eq('id', existingInvite.id)
     }
 
-    // First create the organization_members record with email (no user_id yet)
+    // Generate secure token
+    const rawToken = generateSecureToken()
+    const hashedToken = hashToken(rawToken)
+    const expiryHours = parseInt(process.env.INVITE_TOKEN_EXPIRY_HOURS || '72')
+    const tokenExpiry = getTokenExpiry(expiryHours)
+
+    // Create organization_members record with token
     const { error: memberError } = await supabaseAdmin
       .from('organization_members')
       .insert({
-        email: email.toLowerCase(),
-        user_id: null,  // Will be set when user accepts invite
+        email: normalizedEmail,
+        user_id: null,
         role: 'participant',
         status: 'invited',
-        invited_by: admin.userId
+        invited_by: admin.userId,
+        invite_token: hashedToken,
+        token_expires_at: tokenExpiry.toISOString()
       } as never)
 
     if (memberError) {
@@ -134,44 +158,49 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: memberError.message }, { status: 500 })
     }
 
-    // Now send the invite email via Supabase Auth
-    const { error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-      data: {
-        full_name: fullName || null,
-        invited_by: admin.userId
-      },
-      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/auth/callback`
-    })
+    // Build invite URL with raw token
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+    const inviteUrl = `${siteUrl}/register/invite?token=${rawToken}`
 
-    if (inviteError) {
-      // Rollback: delete the organization_members record if invite fails
+    // Send invite email via SMTP
+    try {
+      await sendEmail({
+        to: normalizedEmail,
+        subject: 'Uitnodiging voor AI Academy',
+        html: getInviteEmailHtml({ inviteUrl, fullName, expiryHours }),
+        text: getInviteEmailText({ inviteUrl, fullName, expiryHours })
+      })
+    } catch (emailError) {
+      // Rollback: delete the organization_members record if email fails
       await supabaseAdmin
         .from('organization_members')
         .delete()
-        .eq('email', email.toLowerCase())
+        .eq('email', normalizedEmail)
         .is('user_id', null)
 
-      return NextResponse.json({ error: inviteError.message }, { status: 500 })
+      console.error('Email send error:', emailError)
+      return NextResponse.json({
+        error: 'Fout bij het versturen van de email. Controleer de SMTP-instellingen.'
+      }, { status: 500 })
     }
 
     return NextResponse.json({
       success: true,
-      message: 'Uitnodiging verstuurd naar ' + email
+      message: 'Uitnodiging verstuurd naar ' + normalizedEmail
     })
 
   } catch (error) {
     console.error('Invite error:', error)
 
-    // Provide more specific error messages
     if (error instanceof Error) {
       if (error.message.includes('Missing Supabase admin credentials')) {
         return NextResponse.json({
-          error: 'Server configuratie fout: admin credentials ontbreken. Neem contact op met de beheerder.'
+          error: 'Server configuratie fout: admin credentials ontbreken.'
         }, { status: 500 })
       }
-      if (error.message.includes('Invalid API key') || error.message.includes('service_role')) {
+      if (error.message.includes('SMTP')) {
         return NextResponse.json({
-          error: 'Server configuratie fout: ongeldige API key. Neem contact op met de beheerder.'
+          error: 'Email configuratie fout: ' + error.message
         }, { status: 500 })
       }
     }
