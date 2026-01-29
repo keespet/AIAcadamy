@@ -36,13 +36,25 @@ export async function sendEmail(options: SendEmailOptions): Promise<void> {
   const fromName = process.env.SMTP_FROM_NAME || 'AI Academy'
   const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER
 
-  await transporter.sendMail({
-    from: `"${fromName}" <${fromEmail}>`,
-    to: options.to,
-    subject: options.subject,
-    html: options.html,
-    text: options.text || options.html.replace(/<[^>]*>/g, ''),
-  })
+  try {
+    await transporter.sendMail({
+      from: `"${fromName}" <${fromEmail}>`,
+      to: options.to,
+      subject: options.subject,
+      html: options.html,
+      text: options.text || options.html.replace(/<[^>]*>/g, ''),
+    })
+  } catch (error) {
+    console.error('SMTP Error details:', {
+      host: process.env.SMTP_HOST,
+      port: process.env.SMTP_PORT,
+      user: process.env.SMTP_USER,
+      from: fromEmail,
+      to: options.to,
+      error: error instanceof Error ? error.message : error
+    })
+    throw error
+  }
 }
 
 export async function verifySmtpConnection(): Promise<boolean> {

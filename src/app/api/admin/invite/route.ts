@@ -178,9 +178,11 @@ export async function POST(request: NextRequest) {
         .eq('email', normalizedEmail)
         .is('user_id', null)
 
-      console.error('Email send error:', emailError)
+      const errorMessage = emailError instanceof Error ? emailError.message : 'Onbekende fout'
+      console.error('Email send error:', errorMessage)
+
       return NextResponse.json({
-        error: 'Fout bij het versturen van de email. Controleer de SMTP-instellingen.'
+        error: `Fout bij het versturen van de email: ${errorMessage}`
       }, { status: 500 })
     }
 
