@@ -32,7 +32,8 @@ function InviteRegisterContent() {
         const data = await res.json()
 
         if (!data.valid) {
-          setTokenError(data.error || 'Ongeldige uitnodiging')
+          const errorMsg = typeof data.error === 'string' ? data.error : 'Ongeldige uitnodiging'
+          setTokenError(errorMsg)
         } else {
           setEmail(data.email)
         }
@@ -73,7 +74,8 @@ function InviteRegisterContent() {
       const data = await res.json()
 
       if (data.error) {
-        setError(data.error)
+        const errorMsg = typeof data.error === 'string' ? data.error : 'Er is een fout opgetreden'
+        setError(errorMsg)
         setLoading(false)
         return
       }

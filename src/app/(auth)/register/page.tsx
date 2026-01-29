@@ -44,10 +44,19 @@ export default function RegisterPage() {
     })
 
     if (error) {
-      if (error.message.includes('already registered')) {
+      console.error('Supabase signup error:', error)
+      console.error('Error message:', error.message)
+      console.error('Error code:', error.code)
+
+      const errorMessage = error.message || ''
+      if (errorMessage.includes('already registered')) {
         setError('Dit emailadres is al geregistreerd')
+      } else if (errorMessage.includes('not authorized') || errorMessage.includes('Signups not allowed')) {
+        setError('Registratie is momenteel uitgeschakeld. Neem contact op met de beheerder.')
+      } else if (errorMessage && typeof errorMessage === 'string' && errorMessage !== '{}') {
+        setError(errorMessage)
       } else {
-        setError(error.message)
+        setError('Er is een fout opgetreden bij het registreren. Probeer het later opnieuw.')
       }
       setLoading(false)
       return
