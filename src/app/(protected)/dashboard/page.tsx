@@ -14,12 +14,12 @@ async function getModulesWithProgress(userId: string): Promise<ModuleWithProgres
 
   const { data: modulesData } = await supabase
     .from('modules')
-    .select('*')
+    .select('id, order_number, title, description, gamma_embed_url, created_at')
     .order('order_number')
 
   const { data: progressData } = await supabase
     .from('user_progress')
-    .select('*')
+    .select('id, user_id, module_id, view_time_seconds, quiz_score, quiz_completed, completed_at')
     .eq('user_id', userId)
 
   const modules = modulesData as Module[] | null

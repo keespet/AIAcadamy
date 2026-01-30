@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { hashPassword, createToken, setAuthCookie } from '@/lib/auth'
 import { v4 as uuidv4 } from 'uuid'
+import { rateLimit, REGISTER_RATE_LIMIT } from '@/lib/rate-limit'
 
 interface RegisterBody {
   email: string
@@ -11,6 +12,18 @@ interface RegisterBody {
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limit by IP address (stricter for registration)
+    const ip = request.headers.get('x-forwarded-for')?.split(',')[0] ||
+               request.headers.get('x-real-ip') ||
+               'unknown'
+
+    const rateLimitResult = rateLimit(`register:${ip}`, REGISTER_RATE_LIMIT)
+    if (!rateLimitResult.success) {
+      return NextResponse.json({
+        error: `Te veel registratiepogingen. Probeer het over ${rateLimitResult.resetIn} seconden opnieuw.`
+      }, { status: 429 })
+    }
+
     const body: RegisterBody = await request.json()
     const { email, password, fullName } = body
 

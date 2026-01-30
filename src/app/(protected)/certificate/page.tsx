@@ -18,13 +18,13 @@ export default async function CertificatePage() {
   // Get all modules
   const { data: modulesData } = await supabase
     .from('modules')
-    .select('*')
+    .select('id, order_number, title, description, gamma_embed_url, created_at')
     .order('order_number')
 
   // Get user progress for all modules
   const { data: progressData } = await supabase
     .from('user_progress')
-    .select('*')
+    .select('id, user_id, module_id, view_time_seconds, quiz_score, quiz_completed, completed_at')
     .eq('user_id', user.id)
 
   const modules = modulesData as Module[] | null
@@ -93,7 +93,7 @@ export default async function CertificatePage() {
   // Get or create certificate
   const { data: certificateData } = await supabase
     .from('certificates')
-    .select('*')
+    .select('id, user_id, verification_code, average_score, issued_at')
     .eq('user_id', user.id)
     .single()
 

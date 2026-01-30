@@ -27,7 +27,7 @@ export default async function QuizPage({ params }: QuizPageProps) {
   // Fetch the module
   const { data: moduleData } = await supabase
     .from('modules')
-    .select('*')
+    .select('id, order_number, title, description, gamma_embed_url, created_at')
     .eq('id', moduleId)
     .single()
 
@@ -40,7 +40,7 @@ export default async function QuizPage({ params }: QuizPageProps) {
   // Check if user has viewed the module for at least 2 minutes
   const { data: progressData } = await supabase
     .from('user_progress')
-    .select('*')
+    .select('id, user_id, module_id, view_time_seconds, quiz_score, quiz_completed, completed_at')
     .eq('user_id', user.id)
     .eq('module_id', moduleId)
     .single()
@@ -54,7 +54,7 @@ export default async function QuizPage({ params }: QuizPageProps) {
   // Fetch questions for this module
   const { data: questionsData } = await supabase
     .from('questions')
-    .select('*')
+    .select('id, module_id, question_text, option_a, option_b, option_c, option_d, correct_answer, order_number')
     .eq('module_id', moduleId)
     .order('order_number')
 

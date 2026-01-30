@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { verifyPassword, createToken, setAuthCookie } from '@/lib/auth'
+import { rateLimit, AUTH_RATE_LIMIT } from '@/lib/rate-limit'
 
 interface LoginBody {
   email: string
@@ -18,6 +19,18 @@ interface UserRecord {
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limit by IP address
+    const ip = request.headers.get('x-forwarded-for')?.split(',')[0] ||
+               request.headers.get('x-real-ip') ||
+               'unknown'
+
+    const rateLimitResult = rateLimit(`login:${ip}`, AUTH_RATE_LIMIT)
+    if (!rateLimitResult.success) {
+      return NextResponse.json({
+        error: `Te veel inlogpogingen. Probeer het over ${rateLimitResult.resetIn} seconden opnieuw.`
+      }, { status: 429 })
+    }
+
     const body: LoginBody = await request.json()
     const { email, password } = body
 
