@@ -180,7 +180,18 @@ export default function ModuleContent({ module, userId, initialProgress }: Modul
 
       {/* Video embed - takes most space */}
       <div className="card flex-1 mb-4 md:mb-6 p-2 md:p-6">
-        <div className="relative w-full h-full" style={{ minHeight: '200px', paddingBottom: '56.25%' }}>
+        {/* Mobile: use viewport height for better visibility */}
+        <div className="md:hidden relative w-full" style={{ height: '65vh', minHeight: '350px' }}>
+          <iframe
+            src={module.gamma_embed_url}
+            className="absolute top-0 left-0 w-full h-full rounded-lg"
+            style={{ border: 0 }}
+            allow="fullscreen"
+            allowFullScreen
+          />
+        </div>
+        {/* Desktop: use aspect ratio */}
+        <div className="hidden md:block relative w-full" style={{ paddingBottom: '56.25%' }}>
           <iframe
             src={module.gamma_embed_url}
             className="absolute top-0 left-0 w-full h-full rounded-lg"
