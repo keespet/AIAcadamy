@@ -17,8 +17,6 @@ export interface Database {
           full_name: string | null
           role: 'admin' | 'participant'
           status: 'active' | 'inactive' | 'pending'
-          invite_token: string | null
-          token_expires_at: string | null
           invited_by: string | null
           created_at: string
           updated_at: string
@@ -30,8 +28,6 @@ export interface Database {
           full_name?: string | null
           role?: 'admin' | 'participant'
           status?: 'active' | 'inactive' | 'pending'
-          invite_token?: string | null
-          token_expires_at?: string | null
           invited_by?: string | null
           created_at?: string
           updated_at?: string
@@ -43,8 +39,6 @@ export interface Database {
           full_name?: string | null
           role?: 'admin' | 'participant'
           status?: 'active' | 'inactive' | 'pending'
-          invite_token?: string | null
-          token_expires_at?: string | null
           invited_by?: string | null
           created_at?: string
           updated_at?: string
@@ -137,6 +131,7 @@ export interface Database {
           quiz_score: number | null
           quiz_completed: boolean
           completed_at: string | null
+          updated_at: string
         }
         Insert: {
           id?: number
@@ -146,6 +141,7 @@ export interface Database {
           quiz_score?: number | null
           quiz_completed?: boolean
           completed_at?: string | null
+          updated_at?: string
         }
         Update: {
           id?: number
@@ -155,6 +151,7 @@ export interface Database {
           quiz_score?: number | null
           quiz_completed?: boolean
           completed_at?: string | null
+          updated_at?: string
         }
       }
       certificates: {
@@ -164,6 +161,7 @@ export interface Database {
           verification_code: string
           average_score: number | null
           issued_at: string
+          updated_at: string
         }
         Insert: {
           id?: number
@@ -171,6 +169,7 @@ export interface Database {
           verification_code: string
           average_score?: number | null
           issued_at?: string
+          updated_at?: string
         }
         Update: {
           id?: number
@@ -178,6 +177,7 @@ export interface Database {
           verification_code?: string
           average_score?: number | null
           issued_at?: string
+          updated_at?: string
         }
       }
       organization_members: {
