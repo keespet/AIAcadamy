@@ -1,16 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { requireAdmin } from '@/lib/admin'
 
-interface OrganizationMemberWithProfile {
-  id: number
-  user_id: string | null
-  email: string | null
-  role: string
-  status: string
-  invited_at: string
-  joined_at: string | null
-  profiles: { full_name: string | null } | null
+interface UserRecord {
+  id: string
+  email: string
+  full_name: string | null
+  role: 'admin' | 'participant'
+  status: 'active' | 'inactive' | 'pending'
+  created_at: string
 }
 
 interface UserProgress {
@@ -30,32 +28,23 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const supabase = await createClient()
+  const supabase = createAdminClient()
 
-  // Get all organization members with their profiles and progress
-  // Use left join for profiles since user_id can be null for pending invites
-  const { data: members, error: membersError } = await supabase
-    .from('organization_members')
-    .select(`
-      id,
-      user_id,
-      email,
-      role,
-      status,
-      invited_at,
-      joined_at,
-      profiles!left(full_name)
-    `)
-    .order('invited_at', { ascending: false }) as { data: OrganizationMemberWithProfile[] | null, error: Error | null }
+  // Get all participants from users table (consistent with admin dashboard)
+  const { data: users, error: usersError } = await supabase
+    .from('users')
+    .select('id, email, full_name, role, status, created_at')
+    .eq('role', 'participant')
+    .order('created_at', { ascending: false }) as { data: UserRecord[] | null, error: Error | null }
 
-  if (membersError) {
-    return NextResponse.json({ error: membersError.message }, { status: 500 })
+  if (usersError) {
+    return NextResponse.json({ error: usersError.message }, { status: 500 })
   }
 
   // Get module count
   const { count: totalModules } = await supabase
     .from('modules')
-    .select('*', { count: 'exact', head: true })
+    .select('id', { count: 'exact', head: true })
 
   // Get progress for all users
   const { data: allProgress } = await supabase
@@ -67,32 +56,26 @@ export async function GET() {
     .from('certificates')
     .select('user_id') as { data: Certificate[] | null }
 
-  const participantsWithProgress = members?.map(member => {
-    const userProgress = member.user_id
-      ? allProgress?.filter(p => p.user_id === member.user_id) || []
-      : []
+  const participantsWithProgress = users?.map(user => {
+    const userProgress = allProgress?.filter(p => p.user_id === user.id) || []
     const completedModules = userProgress.filter(p => p.quiz_completed && (p.quiz_score ?? 0) >= 70).length
-    const hasCertificate = member.user_id
-      ? certificates?.some(c => c.user_id === member.user_id) || false
-      : false
+    const hasCertificate = certificates?.some(c => c.user_id === user.id) || false
     const lastActivity = userProgress
       .map(p => p.completed_at)
       .filter(Boolean)
       .sort()
       .reverse()[0] || null
 
-    // Use profile name, then email, then 'Onbekend' as fallback
-    const fullName = member.profiles?.full_name || member.email || 'Onbekend'
-
     return {
-      id: member.id,
-      userId: member.user_id,
-      email: member.email,
-      fullName,
-      role: member.role,
-      status: member.status,
-      invitedAt: member.invited_at,
-      joinedAt: member.joined_at,
+      id: user.id,  // Use the user's UUID as ID
+      odometer: user.id,
+      userId: user.id,
+      email: user.email,
+      fullName: user.full_name || user.email,
+      role: user.role,
+      status: user.status,
+      invitedAt: user.created_at,
+      joinedAt: user.created_at,
       totalModules: totalModules || 6,
       completedModules,
       progressPercentage: totalModules ? Math.round((completedModules / totalModules) * 100) : 0,
@@ -117,14 +100,15 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: 'Missing memberId or status' }, { status: 400 })
   }
 
-  if (!['active', 'inactive', 'invited', 'pending'].includes(status)) {
+  if (!['active', 'inactive', 'pending'].includes(status)) {
     return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
   }
 
-  const supabase = await createClient()
+  const supabase = createAdminClient()
 
+  // Update status in users table (memberId is now the user's UUID)
   const { error } = await supabase
-    .from('organization_members')
+    .from('users')
     .update({ status } as never)
     .eq('id', memberId)
 

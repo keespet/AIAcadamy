@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react'
 
 interface Participant {
-  id: number
+  id: string  // UUID string
   userId: string
+  email: string
   fullName: string
   role: string
   status: string
@@ -21,7 +22,7 @@ export default function ParticipantsPage() {
   const [participants, setParticipants] = useState<Participant[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [actionLoading, setActionLoading] = useState<number | null>(null)
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
 
   const fetchParticipants = async () => {
     try {
@@ -43,7 +44,7 @@ export default function ParticipantsPage() {
     fetchParticipants()
   }, [])
 
-  const handleStatusChange = async (memberId: number, newStatus: string) => {
+  const handleStatusChange = async (memberId: string, newStatus: string) => {
     setActionLoading(memberId)
     try {
       const res = await fetch('/api/admin/members', {
@@ -64,29 +65,7 @@ export default function ParticipantsPage() {
     }
   }
 
-  const handlePasswordReset = async (userId: string, name: string) => {
-    if (!confirm(`Weet je zeker dat je een wachtwoord reset wilt versturen naar ${name}?`)) {
-      return
-    }
-
-    try {
-      const res = await fetch('/api/admin/password-reset', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId })
-      })
-      const data = await res.json()
-      if (data.error) {
-        alert(data.error)
-      } else {
-        alert(data.message)
-      }
-    } catch {
-      alert('Fout bij het versturen van de reset email')
-    }
-  }
-
-  const handleDelete = async (memberId: number, name: string) => {
+  const handleDelete = async (memberId: string, name: string) => {
     if (!confirm(`Weet je zeker dat je ${name} wilt verwijderen? Dit kan niet ongedaan worden gemaakt.`)) {
       return
     }
@@ -212,12 +191,6 @@ export default function ParticipantsPage() {
                       {actionLoading === participant.id ? '...' : 'Activeren'}
                     </button>
                   )}
-                  <button
-                    onClick={() => handlePasswordReset(participant.userId, participant.fullName)}
-                    className="btn-secondary text-sm py-2 px-3"
-                  >
-                    Reset wachtwoord
-                  </button>
                   <button
                     onClick={() => handleDelete(participant.id, participant.fullName)}
                     className="text-sm py-2 px-3 rounded"

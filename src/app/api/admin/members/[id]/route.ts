@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { requireAdmin } from '@/lib/admin'
 
-interface OrganizationMemberWithProfile {
-  id: number
-  user_id: string
-  role: string
-  status: string
-  invited_at: string
-  joined_at: string | null
-  profiles: { full_name: string | null }
+interface UserRecord {
+  id: string
+  email: string
+  full_name: string | null
+  role: 'admin' | 'participant'
+  status: 'active' | 'inactive' | 'pending'
+  created_at: string
 }
 
 interface UserProgressWithModule {
@@ -27,10 +26,6 @@ interface Certificate {
   issued_at: string
 }
 
-interface MemberWithUserId {
-  user_id: string
-}
-
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -41,25 +36,17 @@ export async function GET(
   }
 
   const { id } = await params
-  const supabase = await createClient()
+  const supabase = createAdminClient()
 
-  // Use profiles!user_id to explicitly specify which FK to use (avoids ambiguous relationship error)
-  const { data: member, error } = await supabase
-    .from('organization_members')
-    .select(`
-      id,
-      user_id,
-      role,
-      status,
-      invited_at,
-      joined_at,
-      profiles!user_id(full_name)
-    `)
+  // Get user from users table
+  const { data: user, error } = await supabase
+    .from('users')
+    .select('id, email, full_name, role, status, created_at')
     .eq('id', id)
-    .single() as { data: OrganizationMemberWithProfile | null, error: Error | null }
+    .single() as { data: UserRecord | null, error: Error | null }
 
-  if (error || !member) {
-    return NextResponse.json({ error: 'Lid niet gevonden' }, { status: 404 })
+  if (error || !user) {
+    return NextResponse.json({ error: 'Gebruiker niet gevonden' }, { status: 404 })
   }
 
   // Get user progress
@@ -73,25 +60,26 @@ export async function GET(
       completed_at,
       modules!inner(title, order_number)
     `)
-    .eq('user_id', member.user_id)
+    .eq('user_id', id)
     .order('module_id') as { data: UserProgressWithModule[] | null }
 
   // Get certificate
   const { data: certificate } = await supabase
     .from('certificates')
     .select('verification_code, average_score, issued_at')
-    .eq('user_id', member.user_id)
+    .eq('user_id', id)
     .single() as { data: Certificate | null }
 
   return NextResponse.json({
     member: {
-      id: member.id,
-      userId: member.user_id,
-      fullName: member.profiles?.full_name || 'Onbekend',
-      role: member.role,
-      status: member.status,
-      invitedAt: member.invited_at,
-      joinedAt: member.joined_at
+      id: user.id,
+      odometer: user.id,
+      email: user.email,
+      fullName: user.full_name || user.email,
+      role: user.role,
+      status: user.status,
+      invitedAt: user.created_at,
+      joinedAt: user.created_at
     },
     progress: progress?.map(p => ({
       moduleId: p.module_id,
@@ -120,23 +108,33 @@ export async function DELETE(
   }
 
   const { id } = await params
-  const supabase = await createClient()
+  const supabase = createAdminClient()
 
   // Check if trying to delete self
-  const { data: member } = await supabase
-    .from('organization_members')
-    .select('user_id')
-    .eq('id', id)
-    .single() as { data: MemberWithUserId | null }
-
-  if (member?.user_id === admin.userId) {
+  if (id === admin.userId) {
     return NextResponse.json({ error: 'Je kunt jezelf niet verwijderen' }, { status: 400 })
   }
 
+  // Check if user exists and is a participant (not admin)
+  const { data: user } = await supabase
+    .from('users')
+    .select('role')
+    .eq('id', id)
+    .single() as { data: { role: string } | null }
+
+  if (!user) {
+    return NextResponse.json({ error: 'Gebruiker niet gevonden' }, { status: 404 })
+  }
+
+  if (user.role === 'admin') {
+    return NextResponse.json({ error: 'Je kunt geen admin verwijderen' }, { status: 400 })
+  }
+
+  // Delete user (cascades to user_progress, certificates due to FK constraints)
   const { error } = await supabase
-    .from('organization_members')
+    .from('users')
     .delete()
-    .eq('id', id) as { error: Error | null }
+    .eq('id', id)
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
