@@ -6,6 +6,9 @@ import Link from 'next/link'
 import { Module, UserProgress, Certificate } from '@/types/database'
 import { v4 as uuidv4 } from 'uuid'
 
+// Force dynamic rendering - user data should always be fresh
+export const dynamic = 'force-dynamic'
+
 export default async function CertificatePage() {
   const user = await getCurrentUser()
 

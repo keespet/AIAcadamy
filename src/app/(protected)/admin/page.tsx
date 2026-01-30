@@ -1,6 +1,10 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import Link from 'next/link'
 
+// Force dynamic rendering - don't cache this page
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 interface UserRecord {
   id: string
   full_name: string | null

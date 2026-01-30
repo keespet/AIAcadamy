@@ -3,6 +3,9 @@ import { getCurrentUser } from '@/lib/auth'
 import Link from 'next/link'
 import { Module, UserProgress } from '@/types/database'
 
+// Force dynamic rendering - user data should always be fresh
+export const dynamic = 'force-dynamic'
+
 type ModuleWithProgress = Module & {
   progress: UserProgress | null
   isUnlocked: boolean
