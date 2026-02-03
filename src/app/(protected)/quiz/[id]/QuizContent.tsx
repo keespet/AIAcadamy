@@ -69,6 +69,7 @@ export default function QuizContent({ module, questions, userId, previousBestSco
         await fetch('/api/progress/quiz', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({
             moduleId: module.id,
             quizScore: scorePercentage,

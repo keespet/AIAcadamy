@@ -39,6 +39,7 @@ export default function ModuleContent({ module, userId, initialProgress }: Modul
       const response = await fetch('/api/progress', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           moduleId: module.id,
           viewTimeSeconds: seconds,
