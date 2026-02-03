@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/client'
 import { Module, Question } from '@/types/database'
 
 interface QuizContentProps {
@@ -66,20 +65,18 @@ export default function QuizContent({ module, questions, userId, previousBestSco
     const shouldSave = previousBestScore === null || previousBestScore === undefined || scorePercentage > previousBestScore
 
     if (shouldSave) {
-      const supabase = createClient()
-      const isPassing = scorePercentage >= 70
-
-      await supabase
-        .from('user_progress')
-        .upsert({
-          user_id: userId,
-          module_id: module.id,
-          quiz_score: scorePercentage,
-          quiz_completed: isPassing,
-          completed_at: isPassing ? new Date().toISOString() : null,
-        } as never, {
-          onConflict: 'user_id,module_id',
+      try {
+        await fetch('/api/progress/quiz', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            moduleId: module.id,
+            quizScore: scorePercentage,
+          }),
         })
+      } catch {
+        // Continue showing result even if save fails
+      }
     }
 
     setShowResult(true)

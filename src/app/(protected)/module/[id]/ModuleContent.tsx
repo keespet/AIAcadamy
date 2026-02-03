@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react'
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/client'
+import { useRouter } from 'next/navigation'
 import { Module, UserProgress } from '@/types/database'
 
 interface ModuleContentProps {
@@ -14,35 +14,56 @@ interface ModuleContentProps {
 const MIN_VIEW_TIME = 120 // 2 minutes in seconds
 
 export default function ModuleContent({ module, userId, initialProgress }: ModuleContentProps) {
+  const router = useRouter()
   const [viewTime, setViewTime] = useState(initialProgress?.view_time_seconds || 0)
   const [isTimerRunning] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  const [isNavigating, setIsNavigating] = useState(false)
   const lastSaveTime = useRef(initialProgress?.view_time_seconds || 0)
+  const viewTimeRef = useRef(initialProgress?.view_time_seconds || 0)
 
   const canStartQuiz = viewTime >= MIN_VIEW_TIME
   const isCompleted = initialProgress?.quiz_completed && (initialProgress?.quiz_score ?? 0) >= 70
 
-  const saveProgress = useCallback(async (seconds: number) => {
-    if (Math.abs(seconds - lastSaveTime.current) < 10) return
+  // Keep ref in sync with state
+  useEffect(() => {
+    viewTimeRef.current = viewTime
+  }, [viewTime])
+
+  const saveProgress = useCallback(async (seconds: number, force = false) => {
+    if (!force && Math.abs(seconds - lastSaveTime.current) < 10) return
 
     setIsSaving(true)
-    const supabase = createClient()
 
-    const { error } = await supabase
-      .from('user_progress')
-      .upsert({
-        user_id: userId,
-        module_id: module.id,
-        view_time_seconds: seconds,
-      } as never, {
-        onConflict: 'user_id,module_id',
+    try {
+      const response = await fetch('/api/progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          moduleId: module.id,
+          viewTimeSeconds: seconds,
+        }),
       })
 
-    if (!error) {
-      lastSaveTime.current = seconds
+      if (response.ok) {
+        lastSaveTime.current = seconds
+        setIsSaving(false)
+        return true
+      }
+    } catch {
+      // Silently fail, will retry on next interval
     }
+
     setIsSaving(false)
-  }, [userId, module.id])
+    return false
+  }, [module.id])
+
+  const navigateToQuiz = useCallback(async () => {
+    setIsNavigating(true)
+    // Force save current progress before navigating
+    await saveProgress(viewTimeRef.current, true)
+    router.push(`/quiz/${module.id}`)
+  }, [saveProgress, router, module.id])
 
   useEffect(() => {
     let interval: NodeJS.Timeout
@@ -63,28 +84,32 @@ export default function ModuleContent({ module, userId, initialProgress }: Modul
   }, [isTimerRunning, saveProgress])
 
   useEffect(() => {
-    const currentViewTime = viewTime
-
     const handleBeforeUnload = () => {
-      const supabase = createClient()
-      supabase
-        .from('user_progress')
-        .upsert({
-          user_id: userId,
-          module_id: module.id,
-          view_time_seconds: currentViewTime,
-        } as never, {
-          onConflict: 'user_id,module_id',
-        })
+      // Use sendBeacon for reliable delivery when page is closing
+      const data = JSON.stringify({
+        moduleId: module.id,
+        viewTimeSeconds: viewTimeRef.current,
+      })
+      navigator.sendBeacon('/api/progress', data)
+    }
+
+    const handleVisibilityChange = () => {
+      // Save when tab becomes hidden (user switches tabs or minimizes)
+      if (document.visibilityState === 'hidden') {
+        saveProgress(viewTimeRef.current)
+      }
     }
 
     window.addEventListener('beforeunload', handleBeforeUnload)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
 
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload)
-      saveProgress(currentViewTime)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      // Final save on component unmount
+      saveProgress(viewTimeRef.current)
     }
-  }, [viewTime, userId, module.id, saveProgress])
+  }, [module.id, saveProgress])
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
@@ -114,9 +139,14 @@ export default function ModuleContent({ module, userId, initialProgress }: Modul
           {isSaving && <span className="text-xs" style={{ color: 'var(--secondary)' }}>...</span>}
         </div>
         {canStartQuiz ? (
-          <Link href={`/quiz/${module.id}`} className="text-sm font-medium px-3 py-1 rounded" style={{ backgroundColor: 'var(--primary)', color: 'white' }}>
-            Toets
-          </Link>
+          <button
+            onClick={navigateToQuiz}
+            disabled={isNavigating}
+            className="text-sm font-medium px-3 py-1 rounded"
+            style={{ backgroundColor: 'var(--primary)', color: 'white', opacity: isNavigating ? 0.7 : 1 }}
+          >
+            {isNavigating ? '...' : 'Toets'}
+          </button>
         ) : (
           <span className="text-xs" style={{ color: 'var(--secondary)' }}>
             {formatTime(timeRemaining)}
@@ -212,9 +242,9 @@ export default function ModuleContent({ module, userId, initialProgress }: Modul
               Je hebt de presentatie lang genoeg bekeken. Je kunt nu de toets starten.
               Er zijn 5 vragen en je hebt minimaal 70% correct nodig om de module af te ronden.
             </p>
-            <Link href={`/quiz/${module.id}`} className="btn-primary">
-              {isCompleted ? 'Toets opnieuw maken' : 'Start toets'}
-            </Link>
+            <button onClick={navigateToQuiz} disabled={isNavigating} className="btn-primary" style={{ opacity: isNavigating ? 0.7 : 1 }}>
+              {isNavigating ? 'Even geduld...' : (isCompleted ? 'Toets opnieuw maken' : 'Start toets')}
+            </button>
           </>
         ) : (
           <>
@@ -237,9 +267,9 @@ export default function ModuleContent({ module, userId, initialProgress }: Modul
           <p className="text-sm mb-3" style={{ color: 'var(--secondary)' }}>
             5 vragen, minimaal 70% correct nodig.
           </p>
-          <Link href={`/quiz/${module.id}`} className="btn-primary w-full text-center">
-            {isCompleted ? 'Toets opnieuw maken' : 'Start toets'}
-          </Link>
+          <button onClick={navigateToQuiz} disabled={isNavigating} className="btn-primary w-full text-center" style={{ opacity: isNavigating ? 0.7 : 1 }}>
+            {isNavigating ? 'Even geduld...' : (isCompleted ? 'Toets opnieuw maken' : 'Start toets')}
+          </button>
         </div>
       )}
     </div>
