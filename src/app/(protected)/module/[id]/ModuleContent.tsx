@@ -11,18 +11,14 @@ interface ModuleContentProps {
   initialProgress: UserProgress | null
 }
 
-const MIN_VIEW_TIME = 120 // 2 minutes in seconds
-
-export default function ModuleContent({ module, userId, initialProgress }: ModuleContentProps) {
+export default function ModuleContent({ module, initialProgress }: ModuleContentProps) {
   const router = useRouter()
   const [viewTime, setViewTime] = useState(initialProgress?.view_time_seconds || 0)
-  const [isTimerRunning] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [isNavigating, setIsNavigating] = useState(false)
   const lastSaveTime = useRef(initialProgress?.view_time_seconds || 0)
   const viewTimeRef = useRef(initialProgress?.view_time_seconds || 0)
 
-  const canStartQuiz = viewTime >= MIN_VIEW_TIME
   const isCompleted = initialProgress?.quiz_completed && (initialProgress?.quiz_score ?? 0) >= 70
 
   // Keep ref in sync with state
@@ -66,27 +62,24 @@ export default function ModuleContent({ module, userId, initialProgress }: Modul
     router.push(`/quiz/${module.id}`)
   }, [saveProgress, router, module.id])
 
+  // Timer that counts up and saves every 15 seconds
   useEffect(() => {
-    let interval: NodeJS.Timeout
-
-    if (isTimerRunning) {
-      interval = setInterval(() => {
-        setViewTime(prev => {
-          const newTime = prev + 1
-          if (newTime % 15 === 0) {
-            saveProgress(newTime)
-          }
-          return newTime
-        })
-      }, 1000)
-    }
+    const interval = setInterval(() => {
+      setViewTime(prev => {
+        const newTime = prev + 1
+        if (newTime % 15 === 0) {
+          saveProgress(newTime)
+        }
+        return newTime
+      })
+    }, 1000)
 
     return () => clearInterval(interval)
-  }, [isTimerRunning, saveProgress])
+  }, [saveProgress])
 
+  // Save on page leave
   useEffect(() => {
     const handleBeforeUnload = () => {
-      // Use sendBeacon for reliable delivery when page is closing
       const data = JSON.stringify({
         moduleId: module.id,
         viewTimeSeconds: viewTimeRef.current,
@@ -95,7 +88,6 @@ export default function ModuleContent({ module, userId, initialProgress }: Modul
     }
 
     const handleVisibilityChange = () => {
-      // Save when tab becomes hidden (user switches tabs or minimizes)
       if (document.visibilityState === 'hidden') {
         saveProgress(viewTimeRef.current)
       }
@@ -107,7 +99,6 @@ export default function ModuleContent({ module, userId, initialProgress }: Modul
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
-      // Final save on component unmount
       saveProgress(viewTimeRef.current)
     }
   }, [module.id, saveProgress])
@@ -117,8 +108,6 @@ export default function ModuleContent({ module, userId, initialProgress }: Modul
     const secs = seconds % 60
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
-
-  const timeRemaining = Math.max(0, MIN_VIEW_TIME - viewTime)
 
   return (
     <div className="flex flex-col h-full">
@@ -131,28 +120,22 @@ export default function ModuleContent({ module, userId, initialProgress }: Modul
           Terug
         </Link>
         <div className="flex items-center gap-2">
-          <svg className="w-4 h-4" style={{ color: canStartQuiz ? 'var(--success)' : 'var(--primary)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4" style={{ color: 'var(--primary)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <span className="text-sm font-mono" style={{ color: canStartQuiz ? 'var(--success)' : 'var(--foreground)' }}>
+          <span className="text-sm font-mono">
             {formatTime(viewTime)}
           </span>
           {isSaving && <span className="text-xs" style={{ color: 'var(--secondary)' }}>...</span>}
         </div>
-        {canStartQuiz ? (
-          <button
-            onClick={navigateToQuiz}
-            disabled={isNavigating}
-            className="text-sm font-medium px-3 py-1 rounded"
-            style={{ backgroundColor: 'var(--primary)', color: 'white', opacity: isNavigating ? 0.7 : 1 }}
-          >
-            {isNavigating ? '...' : 'Toets'}
-          </button>
-        ) : (
-          <span className="text-xs" style={{ color: 'var(--secondary)' }}>
-            {formatTime(timeRemaining)}
-          </span>
-        )}
+        <button
+          onClick={navigateToQuiz}
+          disabled={isNavigating}
+          className="text-sm font-medium px-3 py-1 rounded"
+          style={{ backgroundColor: 'var(--primary)', color: 'white', opacity: isNavigating ? 0.7 : 1 }}
+        >
+          {isNavigating ? '...' : 'Toets'}
+        </button>
       </div>
 
       {/* Desktop: Full header */}
@@ -172,21 +155,19 @@ export default function ModuleContent({ module, userId, initialProgress }: Modul
 
         <div className="card flex items-center gap-4 md:flex-col md:items-end">
           <div className="flex items-center gap-2">
-            <svg className="w-5 h-5" style={{ color: canStartQuiz ? 'var(--success)' : 'var(--primary)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5" style={{ color: 'var(--primary)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span className="timer" style={{ color: canStartQuiz ? 'var(--success)' : 'var(--foreground)' }}>
+            <span className="timer">
               {formatTime(viewTime)}
             </span>
             {isSaving && (
               <span className="text-xs" style={{ color: 'var(--secondary)' }}>Opslaan...</span>
             )}
           </div>
-          {!canStartQuiz && (
-            <p className="text-sm" style={{ color: 'var(--secondary)' }}>
-              Nog {formatTime(timeRemaining)} voordat je de toets kunt starten
-            </p>
-          )}
+          <p className="text-sm" style={{ color: 'var(--secondary)' }}>
+            Tijd besteed aan module
+          </p>
         </div>
       </div>
 
@@ -233,46 +214,26 @@ export default function ModuleContent({ module, userId, initialProgress }: Modul
         </div>
       </div>
 
-      {/* Quiz button - compact on mobile, only show when ready or on desktop */}
+      {/* Quiz button - always visible */}
       <div className="hidden md:block card">
         <h2 className="text-xl font-semibold mb-4">Toets</h2>
-
-        {canStartQuiz ? (
-          <>
-            <p className="mb-4" style={{ color: 'var(--secondary)' }}>
-              Je hebt de presentatie lang genoeg bekeken. Je kunt nu de toets starten.
-              Er zijn 5 vragen en je hebt minimaal 70% correct nodig om de module af te ronden.
-            </p>
-            <button onClick={navigateToQuiz} disabled={isNavigating} className="btn-primary" style={{ opacity: isNavigating ? 0.7 : 1 }}>
-              {isNavigating ? 'Even geduld...' : (isCompleted ? 'Toets opnieuw maken' : 'Start toets')}
-            </button>
-          </>
-        ) : (
-          <>
-            <p className="mb-4" style={{ color: 'var(--secondary)' }}>
-              Bekijk de presentatie nog even. Na minimaal 2 minuten kun je de toets starten.
-            </p>
-            <button disabled className="btn-primary opacity-50 cursor-not-allowed">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-              </svg>
-              Toets nog niet beschikbaar
-            </button>
-          </>
-        )}
+        <p className="mb-4" style={{ color: 'var(--secondary)' }}>
+          Er zijn 5 vragen en je hebt minimaal 70% correct nodig om de module af te ronden.
+        </p>
+        <button onClick={navigateToQuiz} disabled={isNavigating} className="btn-primary" style={{ opacity: isNavigating ? 0.7 : 1 }}>
+          {isNavigating ? 'Even geduld...' : (isCompleted ? 'Toets opnieuw maken' : 'Start toets')}
+        </button>
       </div>
 
-      {/* Mobile: Show quiz info only when quiz is available */}
-      {canStartQuiz && (
-        <div className="md:hidden card p-4">
-          <p className="text-sm mb-3" style={{ color: 'var(--secondary)' }}>
-            5 vragen, minimaal 70% correct nodig.
-          </p>
-          <button onClick={navigateToQuiz} disabled={isNavigating} className="btn-primary w-full text-center" style={{ opacity: isNavigating ? 0.7 : 1 }}>
-            {isNavigating ? 'Even geduld...' : (isCompleted ? 'Toets opnieuw maken' : 'Start toets')}
-          </button>
-        </div>
-      )}
+      {/* Mobile: Quiz button always visible */}
+      <div className="md:hidden card p-4">
+        <p className="text-sm mb-3" style={{ color: 'var(--secondary)' }}>
+          5 vragen, minimaal 70% correct nodig.
+        </p>
+        <button onClick={navigateToQuiz} disabled={isNavigating} className="btn-primary w-full text-center" style={{ opacity: isNavigating ? 0.7 : 1 }}>
+          {isNavigating ? 'Even geduld...' : (isCompleted ? 'Toets opnieuw maken' : 'Start toets')}
+        </button>
+      </div>
     </div>
   )
 }

@@ -13,6 +13,8 @@ interface UserRecord {
 
 interface UserProgress {
   user_id: string
+  module_id: number
+  view_time_seconds: number
   quiz_completed: boolean
   quiz_score: number | null
   completed_at: string | null
@@ -49,7 +51,7 @@ export async function GET() {
   // Get progress for all users
   const { data: allProgress } = await supabase
     .from('user_progress')
-    .select('user_id, quiz_completed, quiz_score, completed_at') as { data: UserProgress[] | null }
+    .select('user_id, module_id, view_time_seconds, quiz_completed, quiz_score, completed_at') as { data: UserProgress[] | null }
 
   // Get certificates
   const { data: certificates } = await supabase
@@ -66,6 +68,9 @@ export async function GET() {
       .sort()
       .reverse()[0] || null
 
+    // Calculate total view time across all modules
+    const totalViewTimeSeconds = userProgress.reduce((sum, p) => sum + (p.view_time_seconds || 0), 0)
+
     return {
       id: user.id,  // Use the user's UUID as ID
       odometer: user.id,
@@ -80,7 +85,8 @@ export async function GET() {
       completedModules,
       progressPercentage: totalModules ? Math.round((completedModules / totalModules) * 100) : 0,
       hasCertificate,
-      lastActivity
+      lastActivity,
+      totalViewTimeSeconds
     }
   }) || []
 

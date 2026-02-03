@@ -16,6 +16,17 @@ interface Participant {
   progressPercentage: number
   hasCertificate: boolean
   lastActivity: string | null
+  totalViewTimeSeconds: number
+}
+
+function formatViewTime(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`
+  const mins = Math.floor(seconds / 60)
+  const secs = seconds % 60
+  if (mins < 60) return `${mins}m ${secs}s`
+  const hours = Math.floor(mins / 60)
+  const remainingMins = mins % 60
+  return `${hours}u ${remainingMins}m`
 }
 
 export default function ParticipantsPage() {
@@ -153,7 +164,7 @@ export default function ParticipantsPage() {
                       </span>
                     )}
                   </div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm" style={{ color: 'var(--secondary)' }}>
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm" style={{ color: 'var(--secondary)' }}>
                     <div>
                       <span className="block text-xs">Gestart</span>
                       {participant.joinedAt ? new Date(participant.joinedAt).toLocaleDateString('nl-NL') : '-'}
@@ -161,6 +172,10 @@ export default function ParticipantsPage() {
                     <div>
                       <span className="block text-xs">Voortgang</span>
                       {participant.completedModules}/{participant.totalModules} modules ({participant.progressPercentage}%)
+                    </div>
+                    <div>
+                      <span className="block text-xs">Kijktijd</span>
+                      {formatViewTime(participant.totalViewTimeSeconds || 0)}
                     </div>
                     <div>
                       <span className="block text-xs">Laatste activiteit</span>

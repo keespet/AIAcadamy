@@ -37,7 +37,7 @@ export default async function QuizPage({ params }: QuizPageProps) {
     notFound()
   }
 
-  // Check if user has viewed the module for at least 2 minutes
+  // Get user progress for this module
   const { data: progressData } = await supabase
     .from('user_progress')
     .select('id, user_id, module_id, view_time_seconds, quiz_score, quiz_completed, completed_at')
@@ -46,10 +46,6 @@ export default async function QuizPage({ params }: QuizPageProps) {
     .single()
 
   const progress = progressData as UserProgress | null
-
-  if (!progress || progress.view_time_seconds < 120) {
-    redirect(`/module/${moduleId}`)
-  }
 
   // Fetch questions for this module
   const { data: questionsData } = await supabase
