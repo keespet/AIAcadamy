@@ -4,6 +4,9 @@ import { redirect, notFound } from 'next/navigation'
 import ModuleContent from './ModuleContent'
 import { Module, UserProgress } from '@/types/database'
 
+// Force dynamic rendering - progress data should always be fresh
+export const dynamic = 'force-dynamic'
+
 interface ModulePageProps {
   params: Promise<{ id: string }>
 }

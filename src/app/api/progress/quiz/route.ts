@@ -23,6 +23,14 @@ export async function POST(request: NextRequest) {
     const supabase = createAdminClient()
     const isPassing = quizScore >= 70
 
+    // First, get existing progress to preserve view_time_seconds
+    const { data: existingProgress } = await supabase
+      .from('user_progress')
+      .select('view_time_seconds')
+      .eq('user_id', user.id)
+      .eq('module_id', moduleId)
+      .single()
+
     const { error } = await supabase
       .from('user_progress')
       .upsert({
@@ -31,6 +39,8 @@ export async function POST(request: NextRequest) {
         quiz_score: quizScore,
         quiz_completed: isPassing,
         completed_at: isPassing ? new Date().toISOString() : null,
+        // Preserve existing view_time_seconds or default to 0
+        view_time_seconds: existingProgress?.view_time_seconds ?? 0,
       } as never, {
         onConflict: 'user_id,module_id',
       })

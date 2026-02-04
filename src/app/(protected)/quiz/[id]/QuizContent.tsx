@@ -19,6 +19,8 @@ export default function QuizContent({ module, questions, userId, previousBestSco
   const [showResult, setShowResult] = useState(false)
   const [score, setScore] = useState(0)
   const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState(false)
+  const [savedSuccessfully, setSavedSuccessfully] = useState(false)
 
   const currentQuestion = questions[currentQuestionIndex]
   const isLastQuestion = currentQuestionIndex === questions.length - 1
@@ -49,6 +51,8 @@ export default function QuizContent({ module, questions, userId, previousBestSco
 
   const finishQuiz = async () => {
     setIsSaving(true)
+    setSaveError(false)
+    setSavedSuccessfully(false)
 
     // Calculate score
     let correctCount = 0
@@ -66,7 +70,7 @@ export default function QuizContent({ module, questions, userId, previousBestSco
 
     if (shouldSave) {
       try {
-        await fetch('/api/progress/quiz', {
+        const response = await fetch('/api/progress/quiz', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -75,9 +79,20 @@ export default function QuizContent({ module, questions, userId, previousBestSco
             quizScore: scorePercentage,
           }),
         })
-      } catch {
-        // Continue showing result even if save fails
+
+        if (!response.ok) {
+          console.error('Quiz save failed:', await response.text())
+          setSaveError(true)
+        } else {
+          setSavedSuccessfully(true)
+        }
+      } catch (error) {
+        console.error('Quiz save error:', error)
+        setSaveError(true)
       }
+    } else {
+      // Score wasn't higher than previous, but that's OK
+      setSavedSuccessfully(true)
     }
 
     setShowResult(true)
@@ -89,6 +104,8 @@ export default function QuizContent({ module, questions, userId, previousBestSco
     setCurrentQuestionIndex(0)
     setShowResult(false)
     setScore(0)
+    setSaveError(false)
+    setSavedSuccessfully(false)
   }
 
   const isPassing = score >= 70
@@ -122,18 +139,39 @@ export default function QuizContent({ module, questions, userId, previousBestSco
             Je score: <span className="font-bold" style={{ color: isPassing ? 'var(--success)' : 'var(--error)' }}>{score}%</span>
           </p>
 
+          {saveError && (
+            <div className="mb-6 p-4 rounded-lg" style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)' }}>
+              <p className="font-semibold" style={{ color: 'var(--error)' }}>
+                Let op: Er ging iets mis bij het opslaan van je score.
+              </p>
+              <p className="text-sm mt-1" style={{ color: 'var(--secondary)' }}>
+                Probeer de toets opnieuw te maken. Als het probleem aanhoudt, neem contact op met de beheerder.
+              </p>
+            </div>
+          )}
+
           {isPassing ? (
             <>
               <p className="mb-6" style={{ color: 'var(--secondary)' }}>
-                Je hebt module &quot;{module.title}&quot; succesvol afgerond!
+                {saveError
+                  ? 'Je had een voldoende, maar je score kon niet worden opgeslagen. Probeer het opnieuw.'
+                  : `Je hebt module "${module.title}" succesvol afgerond!`}
               </p>
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                <Link href="/dashboard" className="btn-primary">
-                  Terug naar dashboard
-                </Link>
-                <button onClick={handleRetry} className="btn-secondary">
-                  Opnieuw proberen
-                </button>
+                {saveError ? (
+                  <button onClick={handleRetry} className="btn-primary">
+                    Opnieuw proberen
+                  </button>
+                ) : (
+                  <>
+                    <Link href="/dashboard" className="btn-primary">
+                      Terug naar dashboard
+                    </Link>
+                    <button onClick={handleRetry} className="btn-secondary">
+                      Opnieuw proberen
+                    </button>
+                  </>
+                )}
               </div>
             </>
           ) : (
